@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F5F5">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Face Verification"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:paddingBottom="8dp"
+            android:textColor="#1976D2"/>
+
+        <TextView
+            android:id="@+id/instructionText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Position your face in the frame"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:paddingBottom="16dp"
+            android:textColor="#666666"/>
+
+        <!-- Reference Face from Chip -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Reference Photo (from ID chip)"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="#666666"
+                    android:paddingBottom="8dp"/>
+
+                <ImageView
+                    android:id="@+id/chipFaceImageView"
+                    android:layout_width="120dp"
+                    android:layout_height="150dp"
+                    android:layout_gravity="center"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Reference face from ID chip"/>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Camera Preview Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Live Camera"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="#666666"/>
+
+                    <ImageView
+                        android:id="@+id/faceDetectionIndicator"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:src="@android:drawable/presence_online"
+                        android:contentDescription="Face detection indicator"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text=" Face Detection"
+                        android:textSize="12sp"
+                        android:textColor="#666666"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="0dp"/>
+
+                </LinearLayout>
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="400dp">
+
+                    <androidx.camera.view.PreviewView
+                        android:id="@+id/cameraPreview"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"/>
+
+                    <!-- Face guide overlay -->
+                    <ImageView
+                        android:layout_width="200dp"
+                        android:layout_height="250dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/mrz_frame"
+                        android:alpha="0.5"
+                        android:contentDescription="Face guide"/>
+
+                </FrameLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Status and Progress -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingVertical="8dp">
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:visibility="gone"/>
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ready"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:paddingStart="8dp"
+                android:paddingEnd="0dp"/>
+
+        </LinearLayout>
+
+        <!-- Capture Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/captureButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Capture Face"
+            android:textSize="16sp"
+            android:enabled="false"
+            app:cornerRadius="12dp"
+            app:icon="@android:drawable/ic_menu_camera"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- Captured Face Preview -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Captured Photo"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="#666666"
+                    android:paddingBottom="8dp"/>
+
+                <ImageView
+                    android:id="@+id/capturedFaceImageView"
+                    android:layout_width="120dp"
+                    android:layout_height="150dp"
+                    android:layout_gravity="center"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone"
+                    android:contentDescription="Captured face"/>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Results Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/resultCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="8dp"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:id="@+id/resultText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Result"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:paddingBottom="12dp"/>
+
+                <TextView
+                    android:id="@+id/similarityText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Similarity: --"
+                    android:textSize="18sp"
+                    android:gravity="center"
+                    android:paddingBottom="8dp"/>
+
+                <TextView
+                    android:id="@+id/detailsText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textSize="12sp"
+                    android:textColor="#666666"
+                    android:visibility="gone"
+                    android:paddingTop="8dp"/>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Retry Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/retryButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Try Again"
+            android:textSize="16sp"
+            app:cornerRadius="12dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+</ScrollView>

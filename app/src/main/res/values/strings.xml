@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Albanian ID Verification</string>
+    <string name="capture_mrz">Capture MRZ</string>
+    <string name="position_mrz">Position the MRZ within the frame</string>
+    <string name="reading_nfc">Reading NFC chip...</string>
+    <string name="hold_card">Hold your phone near the ID card</string>
+    <string name="mrz_detected">MRZ detected successfully</string>
+    <string name="nfc_not_supported">NFC not supported on this device</string>
+    <string name="enable_nfc">Please enable NFC in settings</string>
+</resources>
