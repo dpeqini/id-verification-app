@@ -61,6 +61,11 @@ android {
             )
         }
     }
+
+    // Prevent compression of TFLite model files for memory-mapped loading
+    aaptOptions {
+        noCompress("tflite")
+    }
 }
 
 dependencies {
@@ -80,6 +85,12 @@ dependencies {
 
     // ML Kit Face Detection
     implementation("com.google.mlkit:face-detection:16.1.6")
+
+    // TensorFlow Lite for on-device face verification models
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    // Optional: GPU delegate for faster inference on supported devices
+    // implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

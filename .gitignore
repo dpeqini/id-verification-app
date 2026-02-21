@@ -12,6 +12,7 @@
 /captures
 .externalNativeBuild
 .cxx
+deepface_server
 local.properties
 *.apk
 *.ap_

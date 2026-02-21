@@ -50,10 +50,42 @@ class NFCReadActivity : AppCompatActivity() {
             Toast.makeText(this, "Please enable NFC in settings", Toast.LENGTH_LONG).show()
         }
 
+        setupButtons()
         displayMRZInfo()
 
         binding.instructionText.text = "Hold your phone near the ID card's chip"
         binding.statusText.text = "Waiting for NFC tag..."
+    }
+
+    private fun setupButtons() {
+        // Back button
+        binding.backButton.setOnClickListener {
+            finish()
+        }
+
+        // Rescan button - reset and allow rescanning
+        binding.rescanButton.setOnClickListener {
+            resetNFCReading()
+            Toast.makeText(this, "Ready to rescan. Hold card near phone.", Toast.LENGTH_SHORT).show()
+        }
+
+        // Verify button - launch face verification (handled later)
+    }
+
+    private fun resetNFCReading() {
+        // Hide chip data card
+        binding.chipDataLayout.visibility = android.view.View.GONE
+
+        // Show NFC status card
+        binding.nfcStatusCard.visibility = android.view.View.VISIBLE
+
+        // Reset status texts
+        binding.instructionText.text = "Hold your phone near the ID card's chip"
+        binding.statusText.text = "Waiting for NFC tag..."
+        binding.progressBar.visibility = android.view.View.GONE
+
+        // Reset reading flag
+        isReading = false
     }
 
     private fun displayMRZInfo() {
@@ -112,7 +144,6 @@ class NFCReadActivity : AppCompatActivity() {
             try {
                 val result = withContext(Dispatchers.IO) {
                     val isoDep = IsoDep.get(tag)
-                    isoDep.timeout = 5000
                     val reader = PassportReader(isoDep)
 
                     mrzData?.let { mrz ->
@@ -129,7 +160,7 @@ class NFCReadActivity : AppCompatActivity() {
                     displayChipData(result)
                 } else {
                     binding.statusText.text = "Failed to read chip"
-                    val errorMsg =  "Unknown error"
+                    val errorMsg ="Unknown error"
                     Toast.makeText(
                         this@NFCReadActivity,
                         "Could not read NFC chip: $errorMsg",
@@ -137,7 +168,7 @@ class NFCReadActivity : AppCompatActivity() {
                     ).show()
 
                     // Still display what we got (for debugging)
-                    if (result.personalData != null ) {
+                    if (result.personalData != null) {
                         displayChipData(result)
                     }
                 }
@@ -158,6 +189,10 @@ class NFCReadActivity : AppCompatActivity() {
     }
 
     private fun displayChipData(chipData: PassportReader.ChipData) {
+        // Hide NFC status card
+        binding.nfcStatusCard.visibility = android.view.View.GONE
+
+        // Show chip data card
         binding.chipDataLayout.visibility = android.view.View.VISIBLE
 
         binding.chipInfoText.text = buildString {
