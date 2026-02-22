@@ -1,8 +1,10 @@
 package com.example.albanianidverification.security
+
+import com.example.albanianidverification.BuildConfig
+import com.example.albanianidverification.api.VotingApiService
 import okhttp3.CertificatePinner
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -10,103 +12,111 @@ import java.util.concurrent.TimeUnit
 
 /**
  * ══════════════════════════════════════════════════════════════
- *  PHASE 1 — CRITICAL: Certificate Pinning + Nonce Injection
- *
- *  Defends against:
- *    • MITM attacks (Burp Suite, rogue Wi-Fi hotspots, corporate proxies)
- *    • Replay attacks (captured request re-submitted later)
- *
- *  HOW TO GET YOUR PIN HASH:
- *    openssl s_client -connect api.voting.albania.gov:443 \
- *      | openssl x509 -pubkey -noout \
- *      | openssl pkey -pubin -outform der \
- *      | openssl dgst -sha256 -binary \
- *      | base64
- *
- *  ALWAYS add a backup pin from your NEXT certificate before rotating.
- *  Without a backup pin, a cert rotation will break ALL users until they update.
+ *  ApiClient — Certificate Pinning + Nonce + Device binding
  * ══════════════════════════════════════════════════════════════
  */
 object ApiClient {
 
-    // ─── Configuration ──────────────────────────────────────────────────────────
+    // ── Configuration ────────────────────────────────────────────────────────
     private const val PRODUCTION_BASE_URL = "https://api.voting.albania.gov/"
     private const val PRODUCTION_HOSTNAME = "api.voting.albania.gov"
+    private const val PRIMARY_PIN         = "REPLACE_WITH_YOUR_PRIMARY_SHA256_PIN="
+    private const val BACKUP_PIN          = "REPLACE_WITH_YOUR_BACKUP_SHA256_PIN="
 
-    /**
-     * Replace these with real SHA-256 public key hashes from your server cert.
-     * Primary = current cert, Backup = next cert (must exist before you rotate).
-     */
-    private const val PRIMARY_PIN   = "REPLACE_WITH_YOUR_PRIMARY_SHA256_PIN="
-    private const val BACKUP_PIN    = "REPLACE_WITH_YOUR_BACKUP_SHA256_PIN="
+    private val isDebug: Boolean get() = BuildConfig.DEBUG
 
-    // For development against a local emulator / dev server.
-    // BuildConfig.DEBUG ensures this NEVER ships in a release build.
-    private const val DEV_BASE_URL   = "http://10.0.2.2:8081/"   // Android emulator → host
-    private val BASE_URL get() = if (android.os.Build.VERSION.SDK_INT > 0 && isDebugBuild()) DEV_BASE_URL else PRODUCTION_BASE_URL
+    // BASE_URL comes directly from build.gradle.kts buildConfigField —
+    // "http://10.0.2.2:8081/" in debug, "https://api.voting.albania.gov/" in release.
+    private val BASE_URL get() = BuildConfig.API_URL
 
-    // ─── Certificate Pinner ─────────────────────────────────────────────────────
-    private val certificatePinner = CertificatePinner.Builder()
-        .add(PRODUCTION_HOSTNAME, "sha256/$PRIMARY_PIN")
-        .add(PRODUCTION_HOSTNAME, "sha256/$BACKUP_PIN")   // backup — never be without one
-        .build()
-
-    // ─── Nonce Interceptor ──────────────────────────────────────────────────────
-    /**
-     * Automatically injects anti-replay headers on every outbound request:
-     *   X-Request-Nonce     : UUID v4 (unique per request)
-     *   X-Request-Timestamp : epoch milliseconds
-     *   X-Request-Signature : HMAC-SHA256(nonce:timestamp:path, deviceSecret)
-     *
-     * The backend will:
-     *   1. Reject if timestamp is older than 60 seconds
-     *   2. Reject if nonce has already been seen (stored in short-lived cache)
-     *   3. Reject if HMAC signature does not verify
-     */
-    private val nonceInterceptor = Interceptor { chain ->
-        val original = chain.request()
-
-        // Generate fresh nonce + timestamp for this request
-        val nonce = NonceManager.generateNonce()
-        val timestamp = System.currentTimeMillis().toString()
-        val path = original.url.encodedPath
-
-        // HMAC signs nonce:timestamp:path — ties the signature to this exact request
-        val signature = NonceManager.signRequest(nonce, timestamp, path)
-
-        val signed = original.newBuilder()
-            .header("X-Request-Nonce",     nonce)
-            .header("X-Request-Timestamp", timestamp)
-            .header("X-Request-Signature", signature)
+    // ── Certificate Pinner ───────────────────────────────────────────────────
+    // BUG FIX 2: In debug builds, skip cert pinning entirely.
+    // The pinner was configured for "api.voting.albania.gov" but requests go to
+    // "10.0.2.2:8081" — OkHttp silently cancels any request where the host
+    // doesn't match a pinned entry.
+    private val certificatePinner: CertificatePinner? get() =
+        if (isDebug) null
+        else CertificatePinner.Builder()
+            .add(PRODUCTION_HOSTNAME, "sha256/$PRIMARY_PIN")
+            .add(PRODUCTION_HOSTNAME, "sha256/$BACKUP_PIN")
             .build()
 
-        chain.proceed(signed)
+    // ── Nonce Interceptor ────────────────────────────────────────────────────
+    private val nonceInterceptor = Interceptor { chain ->
+        val original  = chain.request()
+        val nonce     = NonceManager.generateNonce()
+        val timestamp = System.currentTimeMillis().toString()
+        val path      = original.url.encodedPath
+        val signature = NonceManager.signRequest(nonce, timestamp, path)
+
+        chain.proceed(
+            original.newBuilder()
+                .header("X-Request-Nonce",     nonce)
+                .header("X-Request-Timestamp", timestamp)
+                .header("X-Request-Signature", signature)
+                .build()
+        )
     }
 
-    // ─── OkHttpClient ───────────────────────────────────────────────────────────
+    // ── Device Interceptor ───────────────────────────────────────────────────
+    private val deviceInterceptor = Interceptor { chain ->
+        val deviceId     = DeviceManager.getDeviceId()
+        val deviceSecret = DeviceManager.getDeviceSecretBase64()
+
+        chain.proceed(
+            chain.request().newBuilder()
+                .header("X-Device-ID",     deviceId)
+                .header("X-Device-Secret", deviceSecret)
+                .build()
+        )
+    }
+
+    // ── Auth Token Interceptor ───────────────────────────────────────────────
+    private fun authTokenInterceptor() = Interceptor { chain ->
+        val request = chain.request()
+        val token   = TokenManager.getAccessToken()
+
+        val authedRequest = if (token != null) {
+            request.newBuilder()
+                .header("Authorization", "Bearer $token")
+                .build()
+        } else {
+            request
+        }
+
+        val response = chain.proceed(authedRequest)
+        if (response.code == 401) TokenManager.clearTokens()
+        response
+    }
+
+    // ── OkHttpClient ─────────────────────────────────────────────────────────
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .certificatePinner(certificatePinner)   // ← certificate pinning
-            .addInterceptor(nonceInterceptor)        // ← nonce / replay prevention
-            .addInterceptor(authTokenInterceptor())  // ← JWT Bearer header
             .apply {
-                // Logging only in debug builds — never log request bodies in production
-                // (they contain face images and NFC chip data)
-                if (isDebugBuild()) {
+                // BUG FIX 3: Only attach the cert pinner in production.
+                // certificatePinner is null in debug builds (see above).
+                certificatePinner?.let { certificatePinner(it) }
+            }
+            .addInterceptor(nonceInterceptor)        // replay prevention
+            .addInterceptor(deviceInterceptor)       // device binding
+            .addInterceptor(authTokenInterceptor())  // JWT Bearer
+            .apply {
+                if (isDebug) {
+                    // Full header logging so you can see exactly what leaves the device
                     addInterceptor(
                         HttpLoggingInterceptor().apply {
-                            level = HttpLoggingInterceptor.Level.HEADERS   // NEVER BODY in prod
+                            level = HttpLoggingInterceptor.Level.HEADERS
                         }
                     )
                 }
             }
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)   // face image upload needs more time
+            .readTimeout(60, TimeUnit.SECONDS)   // face image upload needs headroom
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
     }
 
-    // ─── Retrofit Instance ──────────────────────────────────────────────────────
+    // ── Retrofit Instance ────────────────────────────────────────────────────
     val retrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
@@ -115,36 +125,8 @@ object ApiClient {
             .build()
     }
 
-    // ─── JWT Attachment ─────────────────────────────────────────────────────────
-    private fun authTokenInterceptor() = Interceptor { chain ->
-        val request = chain.request()
-        val token = TokenManager.getAccessToken()
-
-        val authenticatedRequest = if (token != null) {
-            request.newBuilder()
-                .header("Authorization", "Bearer $token")
-                .build()
-        } else {
-            request
-        }
-
-        val response = chain.proceed(authenticatedRequest)
-
-        // If the server returns 401, clear local token so the UI can redirect to login
-        if (response.code == 401) {
-            TokenManager.clearTokens()
-        }
-        response
+    // ── Service ──────────────────────────────────────────────────────────────
+    val votingService: VotingApiService by lazy {
+        retrofit.create(VotingApiService::class.java)
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────
-    private fun isDebugBuild(): Boolean =
-        try {
-            // Evaluates to true only when the app is built with debug variant
-            Class.forName("al.gov.voting.BuildConfig")
-                .getField("DEBUG")
-                .getBoolean(null)
-        } catch (e: Exception) {
-            false  // fail closed — assume production if BuildConfig is missing
-        }
 }

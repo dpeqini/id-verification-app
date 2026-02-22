@@ -1,15 +1,15 @@
 package com.example.albanianidverification
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.View
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -18,89 +18,101 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.albanianidverification.api.IdCardAuthRequest
 import com.example.albanianidverification.databinding.ActivityFaceVerificationBinding
+import com.example.albanianidverification.security.ApiClient
+import com.example.albanianidverification.security.TokenManager
 import com.example.albanianidverification.utils.LivenessDetector
-import com.example.albanianidverification.verification.*
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
- * Face Verification Activity with selectable verification engines.
+ * Face Verification Activity
  *
- * Flow:
- *   Step 1 → Liveness detection (blink, smile, turn)
- *   Step 2 → Select engine + capture selfie
- *   Step 3 → Show comparison results
+ * 3-step flow:
+ *   Step 1 → ML Kit liveness detection (blink / smile / head-turn)
+ *   Step 2 → Capture live selfie
+ *   Step 3 → POST to /api/v1/auth/id-card and display result
  *
- * Available engines:
- *   - ML Kit (Legacy)          — original landmark/histogram approach
- *   - FaceNet TFLite           — 128-d embeddings, ~24 MB, offline
- *   - MobileFaceNet TFLite     — 192-d embeddings, ~5 MB, offline, fast
- *   - DeepFace Server          — Python server, FaceNet512, highest accuracy
+ * All face comparison is performed server-side by the Python DeepFace service.
+ * No local face matching or engine selection is involved.
  */
 class FaceVerificationActivity : AppCompatActivity() {
 
+    // ── Binding & camera ─────────────────────────────────────────────────────
     private lateinit var binding: ActivityFaceVerificationBinding
     private var imageCapture: ImageCapture? = null
     private lateinit var cameraExecutor: ExecutorService
-    private var chipFaceImage: ByteArray? = null
-    private var capturedFaceBitmap: Bitmap? = null
-    private var isFaceDetected = false
 
-    // Liveness detection
+    // ── Chip data received from NFCReadActivity ───────────────────────────────
+    private var chipFaceBytes:  ByteArray? = null
+    private var nationalId:     String     = ""
+    private var holderName:     String     = ""
+    private var dateOfBirth:    String     = ""
+    private var expiryDate:     String     = ""
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    private var currentStep       = 1
+    private var isFaceDetected    = false
+    private var capturedBitmap:   Bitmap?  = null
+
+    // ── Liveness ──────────────────────────────────────────────────────────────
     private lateinit var livenessDetector: LivenessDetector
-
-    // Current step (1 = Liveness, 2 = Capture, 3 = Results)
-    private var currentStep = 1
-
-    // Verification result
-    private var verificationResult: VerificationResult? = null
-
-    // Engine selector data
-    private val engineEntries = mutableListOf<Pair<EngineType, Boolean>>()
 
     companion object {
         private const val TAG = "FaceVerification"
-        const val EXTRA_CHIP_FACE_IMAGE = "chip_face_image"
+
+        /** ByteArray — raw JPEG/JPEG2000 bytes of the chip face image from DG2 */
+        const val EXTRA_CHIP_FACE_BYTES   = "chip_face_bytes"
+        const val EXTRA_NATIONAL_ID       = "national_id"
+        const val EXTRA_NAME              = "holder_name"
+        const val EXTRA_DATE_OF_BIRTH     = "date_of_birth"
+        const val EXTRA_EXPIRY_DATE       = "expiry_date"
     }
 
+    // ── Permission launcher ───────────────────────────────────────────────────
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) startCamera()
+    ) { granted ->
+        if (granted) startCamera()
         else {
             Toast.makeText(this, "Camera permission required", Toast.LENGTH_LONG).show()
             finish()
         }
     }
 
-    // ===== LIFECYCLE =====
+    // ══════════════════════════════════════════════════════════════════════════
+    // Lifecycle
+    // ══════════════════════════════════════════════════════════════════════════
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityFaceVerificationBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        chipFaceImage = intent.getByteArrayExtra(EXTRA_CHIP_FACE_IMAGE)
-        if (chipFaceImage == null) {
-            Toast.makeText(this, "No reference face image provided", Toast.LENGTH_SHORT).show()
+        // Read extras from NFCReadActivity
+        chipFaceBytes = intent.getByteArrayExtra(EXTRA_CHIP_FACE_BYTES)
+        nationalId    = intent.getStringExtra(EXTRA_NATIONAL_ID)   ?: ""
+        holderName    = intent.getStringExtra(EXTRA_NAME)          ?: ""
+        dateOfBirth   = intent.getStringExtra(EXTRA_DATE_OF_BIRTH) ?: ""
+        expiryDate    = intent.getStringExtra(EXTRA_EXPIRY_DATE)   ?: ""
+
+        if (chipFaceBytes == null) {
+            Toast.makeText(this, "No chip face image provided", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // Initialise all verification engines
-        VerificationEngineManager.init(this)
-
-        // Liveness detector
         livenessDetector = LivenessDetector(
-            onLivenessUpdate = { status -> updateLivenessStatus(status) },
+            onLivenessUpdate   = { status -> updateLivenessStatus(status) },
             onLivenessComplete = { passed ->
                 if (passed) onLivenessCheckPassed() else onLivenessCheckFailed()
             }
@@ -108,29 +120,26 @@ class FaceVerificationActivity : AppCompatActivity() {
 
         displayChipFaceImage()
         setupButtons()
-        setupEngineSelector()
         showStep1Liveness()
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
-        ) {
-            startCamera()
-        } else {
-            requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+        ) startCamera()
+        else requestPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
         livenessDetector.cleanup()
-        VerificationEngineManager.release()
     }
 
-    // ===== SETUP =====
+    // ══════════════════════════════════════════════════════════════════════════
+    // Setup
+    // ══════════════════════════════════════════════════════════════════════════
 
     private fun displayChipFaceImage() {
-        chipFaceImage?.let { bytes ->
+        chipFaceBytes?.let { bytes ->
             try {
                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 binding.chipFaceImageView.setImageBitmap(bmp)
@@ -145,101 +154,28 @@ class FaceVerificationActivity : AppCompatActivity() {
         binding.backButton.setOnClickListener { finish() }
 
         binding.captureButton.setOnClickListener {
-            if (isFaceDetected) captureAndCompareFace()
+            if (isFaceDetected) captureAndAuthenticate()
             else Toast.makeText(this, "Please ensure your face is visible", Toast.LENGTH_SHORT).show()
         }
 
-        binding.retryButton.setOnClickListener { resetToStep1() }
-        binding.cancelButton.setOnClickListener { finish() }
-
+        binding.retryButton.setOnClickListener   { resetToStep1() }
+        binding.cancelButton.setOnClickListener  { finish() }
         binding.continueButton.setOnClickListener {
-            Toast.makeText(this, "Ready to call API!", Toast.LENGTH_SHORT).show()
+            // TODO: Navigate to the voting screen
+            Toast.makeText(this, "Proceeding to vote…", Toast.LENGTH_SHORT).show()
             finish()
         }
     }
 
-    // ===== ENGINE SELECTOR =====
-
-    private fun setupEngineSelector() {
-        engineEntries.clear()
-        engineEntries.addAll(VerificationEngineManager.getAvailableEngines())
-
-        val labels = engineEntries.map { (type, available) ->
-            if (available) type.displayName
-            else "${type.displayName} (model missing)"
-        }
-
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, labels)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.engineSpinner.adapter = adapter
-
-        // Pre-select the current engine
-        val currentIdx = engineEntries.indexOfFirst {
-            it.first == VerificationEngineManager.getCurrentEngineType()
-        }
-        if (currentIdx >= 0) binding.engineSpinner.setSelection(currentIdx)
-
-        binding.engineSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                val (type, available) = engineEntries[pos]
-                if (!available) {
-                    Toast.makeText(
-                        this@FaceVerificationActivity,
-                        "Model file missing! Place ${getModelFileName(type)} in app/src/main/assets/",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    // Revert to current engine
-                    val revertIdx = engineEntries.indexOfFirst {
-                        it.first == VerificationEngineManager.getCurrentEngineType()
-                    }
-                    if (revertIdx >= 0) binding.engineSpinner.setSelection(revertIdx)
-                    return
-                }
-
-                VerificationEngineManager.setEngine(type)
-                updateEngineDescription(type)
-
-                // Show/hide DeepFace URL input
-                binding.deepfaceUrlContainer.visibility =
-                    if (type == EngineType.DEEPFACE_SERVER) View.VISIBLE else View.GONE
-
-                Log.i(TAG, "Engine selected: ${type.displayName}")
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-
-        // Initial description
-        updateEngineDescription(VerificationEngineManager.getCurrentEngineType())
-    }
-
-    private fun updateEngineDescription(type: EngineType) {
-        val desc = when (type) {
-            EngineType.ML_KIT_LEGACY ->
-                "Original approach: landmarks + histograms. No deep learning embeddings. Low accuracy for ID-to-selfie."
-            EngineType.FACENET_TFLITE ->
-                "Google FaceNet 128-d embeddings. 99.63% LFW. ~24 MB model. Fully offline."
-            EngineType.MOBILE_FACENET_TFLITE ->
-                "MobileFaceNet 192-d embeddings. 99.55% LFW. ~5 MB model. Very fast. Fully offline."
-            EngineType.DEEPFACE_SERVER ->
-                "Python server running FaceNet512. Highest accuracy. Requires WiFi to server."
-        }
-        binding.engineDescriptionText.text = desc
-    }
-
-    private fun getModelFileName(type: EngineType): String = when (type) {
-        EngineType.FACENET_TFLITE -> "facenet.tflite"
-        EngineType.MOBILE_FACENET_TFLITE -> "mobilefacenet.tflite"
-        else -> ""
-    }
-
-    // ===== STEP 1: LIVENESS DETECTION =====
+    // ══════════════════════════════════════════════════════════════════════════
+    // Step 1 — Liveness Detection
+    // ══════════════════════════════════════════════════════════════════════════
 
     private fun showStep1Liveness() {
         currentStep = 1
-        binding.step1LivenessScreen.visibility = View.VISIBLE
-        binding.step2CaptureScreen.visibility = View.GONE
-        binding.step3ResultsScreen.visibility = View.GONE
+        binding.step1LivenessScreen.visibility  = View.VISIBLE
+        binding.step2CaptureScreen.visibility   = View.GONE
+        binding.step3ResultsScreen.visibility   = View.GONE
         livenessDetector.reset()
     }
 
@@ -251,8 +187,8 @@ class FaceVerificationActivity : AppCompatActivity() {
             ).count { it }
             binding.livenessProgressBar.progress = progress
             binding.livenessCheckText.text = buildString {
-                append(if (status.blinkDetected) "✓" else "○"); append(" Blink\n")
-                append(if (status.smileDetected) "✓" else "○"); append(" Smile\n")
+                append(if (status.blinkDetected)    "✓" else "○"); append(" Blink\n")
+                append(if (status.smileDetected)    "✓" else "○"); append(" Smile\n")
                 append(if (status.headTurnDetected) "✓" else "○"); append(" Turn head")
             }
         }
@@ -276,22 +212,23 @@ class FaceVerificationActivity : AppCompatActivity() {
         }
     }
 
-    // ===== STEP 2: CAPTURE & COMPARE =====
+    // ══════════════════════════════════════════════════════════════════════════
+    // Step 2 — Capture Selfie
+    // ══════════════════════════════════════════════════════════════════════════
 
     private fun showStep2Capture() {
         currentStep = 2
-        binding.step1LivenessScreen.visibility = View.GONE
-        binding.step2CaptureScreen.visibility = View.VISIBLE
-        binding.step3ResultsScreen.visibility = View.GONE
+        binding.step1LivenessScreen.visibility  = View.GONE
+        binding.step2CaptureScreen.visibility   = View.VISIBLE
+        binding.step3ResultsScreen.visibility   = View.GONE
         binding.statusText.text = "Position your face and capture"
         binding.captureButton.isEnabled = true
         rebindCameraToStep2()
     }
 
     private fun rebindCameraToStep2() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
+        ProcessCameraProvider.getInstance(this).addListener({
+            val cameraProvider = ProcessCameraProvider.getInstance(this).get()
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(binding.cameraPreview2.surfaceProvider)
             }
@@ -309,45 +246,34 @@ class FaceVerificationActivity : AppCompatActivity() {
                     preview, imageCapture, imageAnalyzer
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Camera binding failed", e)
+                Log.e(TAG, "Camera binding failed (step 2)", e)
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun captureAndCompareFace() {
+    /**
+     * Capture the selfie, then build the [IdCardAuthRequest] and call the backend.
+     */
+    private fun captureAndAuthenticate() {
         val ic = imageCapture ?: return
-
-        // Apply DeepFace URL if selected
-        if (VerificationEngineManager.getCurrentEngineType() == EngineType.DEEPFACE_SERVER) {
-            val url = binding.deepfaceUrlInput.text?.toString()?.trim()
-            if (!url.isNullOrEmpty()) {
-                VerificationEngineManager
-                    .getEngineInstance<DeepFaceServerEngine>(EngineType.DEEPFACE_SERVER)
-                    ?.updateServerUrl(url)
-            }
-        }
-
         binding.captureButton.isEnabled = false
-        binding.processingOverlay.visibility = View.VISIBLE
+        binding.processingOverlay.visibility   = View.VISIBLE
         binding.processingIndicator.visibility = View.VISIBLE
-
-        val engineName = VerificationEngineManager.getEngine().displayName
-        binding.processingText.text = "Comparing with $engineName..."
+        binding.processingText.text = "Capturing photo…"
 
         ic.takePicture(cameraExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
-                val bitmap = imageProxyToBitmap(image)
+                val bmp = imageProxyToBitmap(image)
                 image.close()
-                lifecycleScope.launch {
-                    capturedFaceBitmap = bitmap
-                    compareFaces(bitmap)
-                }
+                capturedBitmap = bmp
+                runOnUiThread { binding.processingText.text = "Authenticating with server…" }
+                lifecycleScope.launch { authenticateWithBackend(bmp) }
             }
 
             override fun onError(exception: ImageCaptureException) {
-                Log.e(TAG, "Photo capture failed", exception)
+                Log.e(TAG, "Capture failed", exception)
                 runOnUiThread {
-                    binding.processingOverlay.visibility = View.GONE
+                    binding.processingOverlay.visibility   = View.GONE
                     binding.processingIndicator.visibility = View.GONE
                     binding.captureButton.isEnabled = true
                     Toast.makeText(
@@ -360,113 +286,136 @@ class FaceVerificationActivity : AppCompatActivity() {
         })
     }
 
-    private suspend fun compareFaces(capturedBitmap: Bitmap) {
-        runOnUiThread { binding.processingText.text = "Comparing faces..." }
+    // ══════════════════════════════════════════════════════════════════════════
+    // Backend authentication
+    // ══════════════════════════════════════════════════════════════════════════
 
+    private suspend fun authenticateWithBackend(selfieBitmap: Bitmap) {
         try {
-            val chipBitmap = BitmapFactory.decodeByteArray(chipFaceImage, 0, chipFaceImage!!.size)
-            if (chipBitmap == null) {
-                showError("Failed to load reference image")
-                return
+            val chipBase64   = Base64.encodeToString(chipFaceBytes, Base64.NO_WRAP)
+            val selfieBase64 = bitmapToBase64(selfieBitmap)
+
+            val request = IdCardAuthRequest(
+                nationalId       = nationalId,
+                name             = holderName,
+                dateOfBirth      = dateOfBirth,
+                expiryDate       = expiryDate,
+                chipFacePhoto    = chipBase64,
+                liveSelfie       = selfieBase64,
+                livenessConfirmed = true        // liveness passed in Step 1
+            )
+
+            Log.i(TAG, "Sending auth request for nationalId=$nationalId")
+
+            val response = ApiClient.votingService.authenticateWithIdCard(request)
+
+            if (response.isSuccessful) {
+                val body = response.body()
+                if (body?.success == true && body.accessToken != null) {
+                    // Persist tokens
+                    TokenManager.saveTokens(
+                        accessToken  = body.accessToken,
+                        refreshToken = body.refreshToken ?: "",
+                        expiresInSeconds = body.expiresIn ?: 1800L
+                    )
+                    Log.i(TAG, "Authentication successful — voterId=${body.voterId}")
+                    runOnUiThread { showAuthSuccess(body.voterId ?: "—") }
+                } else {
+                    // HTTP 200 but body says failure (shouldn't normally happen)
+                    runOnUiThread { showAuthFailure(response.code(), body?.message) }
+                }
+            } else {
+                val errorBody = response.errorBody()?.string()
+                Log.w(TAG, "Auth failed — HTTP ${response.code()}: $errorBody")
+                runOnUiThread { showAuthFailure(response.code(), errorBody) }
             }
-
-            // Use the selected verification engine
-            val engine = VerificationEngineManager.getEngine()
-            val result = engine.verify(chipBitmap, capturedBitmap)
-
-            verificationResult = result
-
-            Log.i(TAG, "Verification result: match=${result.isMatch}, " +
-                    "sim=${result.similarity}, engine=${result.engineName}")
-
-            runOnUiThread { showStep3Results() }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Face comparison failed", e)
-            showError("Comparison failed: ${e.message}")
+            Log.e(TAG, "Network error during authentication", e)
+            runOnUiThread {
+                binding.processingOverlay.visibility   = View.GONE
+                binding.processingIndicator.visibility = View.GONE
+                binding.captureButton.isEnabled = true
+                Toast.makeText(
+                    this,
+                    "Connection failed — check your internet connection",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
-    // ===== STEP 3: RESULTS =====
+    // ══════════════════════════════════════════════════════════════════════════
+    // Step 3 — Results
+    // ══════════════════════════════════════════════════════════════════════════
 
-    private fun showStep3Results() {
+    private fun showAuthSuccess(voterId: String) {
         currentStep = 3
+        binding.processingOverlay.visibility   = View.GONE
+        binding.processingIndicator.visibility = View.GONE
         binding.step1LivenessScreen.visibility = View.GONE
-        binding.step2CaptureScreen.visibility = View.GONE
-        binding.step3ResultsScreen.visibility = View.VISIBLE
+        binding.step2CaptureScreen.visibility  = View.GONE
+        binding.step3ResultsScreen.visibility  = View.VISIBLE
 
-        val result = verificationResult ?: return
+        capturedBitmap?.let { binding.capturedFaceImageView.setImageBitmap(it) }
 
-        // Display captured face
-        binding.capturedFaceImageView.setImageBitmap(capturedFaceBitmap)
+        binding.resultText.text = "✓ AUTHENTICATION SUCCESSFUL"
+        binding.resultText.setTextColor(0xFF2E7D32.toInt())
+        binding.resultCard.setCardBackgroundColor(0xFFE8F5E9.toInt())
 
-        // Display similarity score
-        val percentage = (result.similarity * 100).toInt()
-        binding.similarityText.text = "$percentage%"
+        binding.similarityText.text = "✓"
+        binding.engineUsedText.text = "Voter ID: $voterId"
 
-        // Engine used
-        binding.engineUsedText.text = "Engine: ${result.engineName}"
-
-        if (result.isMatch) {
-            // SUCCESS
-            binding.resultText.text = "✓ VERIFICATION SUCCESSFUL"
-            binding.resultText.setTextColor(0xFF2E7D32.toInt())
-            binding.resultCard.setCardBackgroundColor(0xFFE8F5E9.toInt())
-            binding.detailsText.text = buildString {
-                append("Liveness Check: ✓ PASSED\n")
-                append("Face Match: ✓ CONFIRMED\n")
-                append("Match Score: $percentage%\n")
-                append("Threshold: ${(result.threshold * 100).toInt()}%\n")
-                append(result.details)
-            }
-            binding.detailsText.visibility = View.VISIBLE
-            binding.resultButtonsContainer.visibility = View.GONE
-            binding.continueButton.visibility = View.VISIBLE
-
-        } else if (result.isBorderline) {
-            // BORDERLINE
-            binding.resultText.text = "⚠ BORDERLINE MATCH"
-            binding.resultText.setTextColor(0xFFF57C00.toInt())
-            binding.resultCard.setCardBackgroundColor(0xFFFFF3E0.toInt())
-            binding.detailsText.text = buildString {
-                append("Liveness Check: ✓ PASSED\n")
-                append("Face Match: ⚠ BORDERLINE\n")
-                append("Match Score: $percentage%\n")
-                append("Required: ${(result.threshold * 100).toInt()}%\n")
-                append(result.details)
-                append("\n\nThe match is close but below threshold.\n")
-                append("If you are the person on the ID, you can proceed manually.")
-            }
-            binding.detailsText.visibility = View.VISIBLE
-            binding.resultButtonsContainer.visibility = View.VISIBLE
-            binding.continueButton.visibility = View.VISIBLE
-            binding.continueButton.text = "I Am This Person - Continue"
-
-        } else {
-            // FAILURE
-            binding.resultText.text = "✗ VERIFICATION FAILED"
-            binding.resultText.setTextColor(0xFFC62828.toInt())
-            binding.resultCard.setCardBackgroundColor(0xFFFFEBEE.toInt())
-            binding.detailsText.text = buildString {
-                append("Liveness Check: ✓ PASSED\n")
-                append("Face Match: ✗ FAILED\n")
-                append("Match Score: $percentage%\n")
-                append("Required: ${(result.threshold * 100).toInt()}%\n")
-                append(result.details)
-                append("\n\nThe faces do not match sufficiently.")
-            }
-            binding.detailsText.visibility = View.VISIBLE
-            binding.resultButtonsContainer.visibility = View.VISIBLE
-            binding.continueButton.visibility = View.GONE
+        binding.detailsText.text = buildString {
+            append("Liveness Check: ✓ PASSED\n")
+            append("Face Match: ✓ CONFIRMED (server)\n")
+            append("Identity: ✓ VERIFIED\n")
+            append("Voter ID: $voterId")
         }
+        binding.detailsText.visibility = View.VISIBLE
+
+        binding.resultButtonsContainer.visibility = View.GONE
+        binding.continueButton.visibility = View.VISIBLE
+        binding.continueButton.text = "Proceed to Vote"
     }
 
-    // ===== CAMERA =====
+    private fun showAuthFailure(httpCode: Int, rawError: String?) {
+        currentStep = 3
+        binding.processingOverlay.visibility   = View.GONE
+        binding.processingIndicator.visibility = View.GONE
+        binding.step1LivenessScreen.visibility = View.GONE
+        binding.step2CaptureScreen.visibility  = View.GONE
+        binding.step3ResultsScreen.visibility  = View.VISIBLE
+
+        capturedBitmap?.let { binding.capturedFaceImageView.setImageBitmap(it) }
+
+        val (title, detail) = when (httpCode) {
+            400  -> "✗ INVALID DATA"         to "Liveness confirmation failed, card may be expired, or chip data is invalid."
+            401  -> "✗ FACE DOES NOT MATCH"  to "The live selfie does not match the photo stored in the ID chip."
+            429  -> "⚠ TOO MANY ATTEMPTS"    to "You have been rate-limited. Please try again in 15 minutes."
+            503  -> "⚠ SERVICE UNAVAILABLE"  to "The face verification service is temporarily down. Please try again shortly."
+            else -> "✗ AUTHENTICATION FAILED" to (rawError?.take(200) ?: "An unexpected error occurred (HTTP $httpCode).")
+        }
+
+        binding.resultText.text = title
+        binding.resultText.setTextColor(0xFFC62828.toInt())
+        binding.resultCard.setCardBackgroundColor(0xFFFFEBEE.toInt())
+        binding.similarityText.text = "✗"
+        binding.engineUsedText.text = "HTTP $httpCode"
+        binding.detailsText.text    = detail
+        binding.detailsText.visibility = View.VISIBLE
+
+        binding.resultButtonsContainer.visibility = View.VISIBLE
+        binding.continueButton.visibility         = View.GONE
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Camera — Step 1 analyzer
+    // ══════════════════════════════════════════════════════════════════════════
 
     private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
+        ProcessCameraProvider.getInstance(this).addListener({
+            val cameraProvider = ProcessCameraProvider.getInstance(this).get()
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(binding.cameraPreview.surfaceProvider)
             }
@@ -484,7 +433,7 @@ class FaceVerificationActivity : AppCompatActivity() {
                     preview, imageCapture, imageAnalyzer
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Camera binding failed", e)
+                Log.e(TAG, "Camera binding failed (step 1)", e)
                 Toast.makeText(this, "Failed to start camera", Toast.LENGTH_LONG).show()
             }
         }, ContextCompat.getMainExecutor(this))
@@ -509,10 +458,8 @@ class FaceVerificationActivity : AppCompatActivity() {
                         isFaceDetected = faces.isNotEmpty()
                         runOnUiThread {
                             binding.faceDetectionIndicator.setColorFilter(
-                                getColor(
-                                    if (isFaceDetected) android.R.color.holo_green_dark
-                                    else android.R.color.holo_red_dark
-                                )
+                                getColor(if (isFaceDetected) android.R.color.holo_green_dark
+                                else android.R.color.holo_red_dark)
                             )
                             if (faces.isNotEmpty()) livenessDetector.processFace(faces[0])
                         }
@@ -540,10 +487,8 @@ class FaceVerificationActivity : AppCompatActivity() {
                         isFaceDetected = faces.isNotEmpty()
                         runOnUiThread {
                             binding.faceDetectionIndicator.setColorFilter(
-                                getColor(
-                                    if (isFaceDetected) android.R.color.holo_green_dark
-                                    else android.R.color.holo_red_dark
-                                )
+                                getColor(if (isFaceDetected) android.R.color.holo_green_dark
+                                else android.R.color.holo_red_dark)
                             )
                         }
                     }
@@ -552,7 +497,9 @@ class FaceVerificationActivity : AppCompatActivity() {
         }
     }
 
-    // ===== UTILITIES =====
+    // ══════════════════════════════════════════════════════════════════════════
+    // Utilities
+    // ══════════════════════════════════════════════════════════════════════════
 
     private fun imageProxyToBitmap(image: ImageProxy): Bitmap {
         val buffer: ByteBuffer = image.planes[0].buffer
@@ -561,23 +508,20 @@ class FaceVerificationActivity : AppCompatActivity() {
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         val matrix = Matrix()
         matrix.postRotate(image.imageInfo.rotationDegrees.toFloat())
-        matrix.postScale(-1f, 1f) // Mirror for front camera
+        matrix.postScale(-1f, 1f) // mirror front camera
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
-    private fun showError(message: String) {
-        runOnUiThread {
-            binding.processingOverlay.visibility = View.GONE
-            binding.processingIndicator.visibility = View.GONE
-            binding.captureButton.isEnabled = true
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        }
+    /** Compress [bitmap] to JPEG at 85% quality and return Base64 NO_WRAP. */
+    private fun bitmapToBase64(bitmap: Bitmap): String {
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 
     private fun resetToStep1() {
         livenessDetector.reset()
-        capturedFaceBitmap = null
-        verificationResult = null
+        capturedBitmap = null
         isFaceDetected = false
         showStep1Liveness()
         startCamera()

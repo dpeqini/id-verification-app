@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?attr/colorSurface">
 
-    <!-- Top Bar with Back Button -->
+    <!-- ══════════════════════════════════════════════════════════
+         Top Bar
+         ══════════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="0dp"
@@ -26,29 +29,31 @@
             android:src="@android:drawable/ic_menu_revert"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="#FFFFFF"
-            android:contentDescription="Go back"/>
+            android:contentDescription="Go back" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Face Verification"
+            android:text="Identity Verification"
             android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
             android:paddingStart="12dp"
-            android:paddingEnd="12dp"/>
+            android:paddingEnd="12dp" />
 
         <ImageView
             android:id="@+id/faceDetectionIndicator"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:src="@android:drawable/presence_online"
-            android:contentDescription="Face detection indicator"/>
+            android:contentDescription="Face detection indicator" />
 
     </LinearLayout>
 
-    <!-- STEP 1: Liveness Detection Screen -->
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 1 — Liveness Detection
+         ══════════════════════════════════════════════════════════ -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/step1LivenessScreen"
         android:layout_width="0dp"
@@ -59,7 +64,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Camera Preview -->
         <androidx.camera.view.PreviewView
             android:id="@+id/cameraPreview"
             android:layout_width="0dp"
@@ -67,9 +71,8 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
+            app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- Face Guide Overlay -->
         <ImageView
             android:layout_width="250dp"
             android:layout_height="300dp"
@@ -80,9 +83,8 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintVertical_bias="0.35"/>
+            app:layout_constraintVertical_bias="0.35" />
 
-        <!-- Liveness Instructions -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/livenessInstructionCard"
             android:layout_width="0dp"
@@ -110,7 +112,7 @@
                     android:textSize="14sp"
                     android:textColor="#AAAAAA"
                     android:gravity="center"
-                    android:paddingBottom="8dp"/>
+                    android:paddingBottom="8dp" />
 
                 <TextView
                     android:id="@+id/livenessInstructionText"
@@ -121,7 +123,7 @@
                     android:textStyle="bold"
                     android:textColor="#FFFFFF"
                     android:gravity="center"
-                    android:paddingBottom="16dp"/>
+                    android:paddingBottom="16dp" />
 
                 <TextView
                     android:id="@+id/livenessCheckText"
@@ -132,7 +134,7 @@
                     android:textColor="#CCFFFFFF"
                     android:gravity="center"
                     android:lineSpacingExtra="4dp"
-                    android:paddingBottom="12dp"/>
+                    android:paddingBottom="12dp" />
 
                 <ProgressBar
                     android:id="@+id/livenessProgressBar"
@@ -141,7 +143,7 @@
                     android:layout_height="8dp"
                     android:max="3"
                     android:progress="0"
-                    android:progressTint="#4CAF50"/>
+                    android:progressTint="#4CAF50" />
 
             </LinearLayout>
 
@@ -149,7 +151,10 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- STEP 2: Capture & Compare Screen -->
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 2 — Capture Selfie
+         Engine selector removed — all matching is server-side.
+         ══════════════════════════════════════════════════════════ -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/step2CaptureScreen"
         android:layout_width="0dp"
@@ -160,7 +165,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Camera Preview -->
         <androidx.camera.view.PreviewView
             android:id="@+id/cameraPreview2"
             android:layout_width="0dp"
@@ -168,9 +172,9 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
+            app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- Processing Overlay (shown during comparison) -->
+        <!-- Dark overlay shown while the request is in flight -->
         <View
             android:id="@+id/processingOverlay"
             android:layout_width="0dp"
@@ -180,7 +184,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
+            app:layout_constraintEnd_toEndOf="parent" />
 
         <LinearLayout
             android:id="@+id/processingIndicator"
@@ -197,20 +201,20 @@
             <ProgressBar
                 android:layout_width="60dp"
                 android:layout_height="60dp"
-                android:indeterminateTint="#FFFFFF"/>
+                android:indeterminateTint="#FFFFFF" />
 
             <TextView
                 android:id="@+id/processingText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Comparing faces..."
+                android:text="Authenticating…"
                 android:textSize="18sp"
                 android:textColor="#FFFFFF"
-                android:paddingTop="16dp"/>
+                android:paddingTop="16dp" />
 
         </LinearLayout>
 
-        <!-- Bottom Control Card -->
+        <!-- Bottom control card (no engine selector) -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -235,9 +239,9 @@
                     android:textSize="14sp"
                     android:textColor="?attr/colorOnSurfaceVariant"
                     android:gravity="center"
-                    android:paddingBottom="8dp"/>
+                    android:paddingBottom="8dp" />
 
-                <!-- Reference Chip Photo -->
+                <!-- Reference chip photo + status -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -250,7 +254,7 @@
                         android:layout_width="60dp"
                         android:layout_height="75dp"
                         android:scaleType="centerCrop"
-                        android:contentDescription="Reference photo from chip"/>
+                        android:contentDescription="Reference photo from chip" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -266,7 +270,7 @@
                             android:text="ID Card Photo"
                             android:textSize="12sp"
                             android:textColor="?attr/colorOnSurfaceVariant"
-                            android:textStyle="bold"/>
+                            android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/statusText"
@@ -275,101 +279,22 @@
                             android:text="Position your face and capture"
                             android:textSize="14sp"
                             android:textColor="?attr/colorOnSurface"
-                            android:paddingTop="4dp"/>
+                            android:paddingTop="4dp" />
 
                     </LinearLayout>
 
                 </LinearLayout>
 
-                <!-- Engine Selector -->
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    app:cardCornerRadius="12dp"
-                    app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="?attr/colorOutline"
-                    app:cardBackgroundColor="?attr/colorSurfaceVariant">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Verification Engine"
-                            android:textSize="11sp"
-                            android:textStyle="bold"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:paddingBottom="6dp"/>
-
-                        <Spinner
-                            android:id="@+id/engineSpinner"
-                            android:layout_width="match_parent"
-                            android:layout_height="40dp"
-                            android:background="@android:drawable/btn_dropdown"
-                            android:popupBackground="?attr/colorSurface"/>
-
-                        <TextView
-                            android:id="@+id/engineDescriptionText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Select a face comparison engine"
-                            android:textSize="11sp"
-                            android:textColor="?attr/colorOnSurfaceVariant"
-                            android:paddingTop="4dp"/>
-
-                        <!-- DeepFace server URL input (only visible when DeepFace is selected) -->
-                        <LinearLayout
-                            android:id="@+id/deepfaceUrlContainer"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
-                            android:visibility="gone"
-                            android:paddingTop="8dp">
-
-                            <com.google.android.material.textfield.TextInputLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:hint="Server URL"
-                                app:boxCornerRadiusTopStart="8dp"
-                                app:boxCornerRadiusTopEnd="8dp"
-                                app:boxCornerRadiusBottomStart="8dp"
-                                app:boxCornerRadiusBottomEnd="8dp">
-
-                                <com.google.android.material.textfield.TextInputEditText
-                                    android:id="@+id/deepfaceUrlInput"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:text="http://192.168.1.89:5005"
-                                    android:textSize="12sp"
-                                    android:inputType="textUri"
-                                    android:singleLine="true"/>
-
-                            </com.google.android.material.textfield.TextInputLayout>
-
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                </com.google.android.material.card.MaterialCardView>
-
-                <!-- Capture Button -->
+                <!-- Capture button -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/captureButton"
                     android:layout_width="match_parent"
                     android:layout_height="56dp"
-                    android:text="Capture Face"
+                    android:text="Capture &amp; Authenticate"
                     android:textSize="16sp"
                     app:cornerRadius="28dp"
                     app:icon="@android:drawable/ic_menu_camera"
-                    app:iconGravity="textStart"/>
+                    app:iconGravity="textStart" />
 
             </LinearLayout>
 
@@ -377,7 +302,9 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- STEP 3: Results Screen -->
+    <!-- ══════════════════════════════════════════════════════════
+         STEP 3 — Result (success or failure)
+         ══════════════════════════════════════════════════════════ -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/step3ResultsScreen"
         android:layout_width="0dp"
@@ -411,9 +338,8 @@
                     android:text="Step 3 of 3"
                     android:textSize="14sp"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    android:paddingBottom="24dp"/>
+                    android:paddingBottom="24dp" />
 
-                <!-- Result Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/resultCard"
                     android:layout_width="match_parent"
@@ -428,7 +354,7 @@
                         android:orientation="vertical"
                         android:padding="24dp">
 
-                        <!-- Face Comparison Images -->
+                        <!-- Chip photo vs captured photo -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -441,7 +367,7 @@
                                 android:layout_width="100dp"
                                 android:layout_height="125dp"
                                 android:scaleType="centerCrop"
-                                android:contentDescription="Chip photo"/>
+                                android:contentDescription="Chip photo" />
 
                             <TextView
                                 android:layout_width="wrap_content"
@@ -449,18 +375,18 @@
                                 android:text=" vs "
                                 android:textSize="24sp"
                                 android:textStyle="bold"
-                                android:paddingHorizontal="16dp"/>
+                                android:paddingHorizontal="16dp" />
 
                             <ImageView
                                 android:id="@+id/capturedFaceImageView"
                                 android:layout_width="100dp"
                                 android:layout_height="125dp"
                                 android:scaleType="centerCrop"
-                                android:contentDescription="Captured photo"/>
+                                android:contentDescription="Captured photo" />
 
                         </LinearLayout>
 
-                        <!-- Result Status -->
+                        <!-- Result status text -->
                         <TextView
                             android:id="@+id/resultText"
                             android:layout_width="match_parent"
@@ -469,31 +395,31 @@
                             android:textSize="20sp"
                             android:textStyle="bold"
                             android:gravity="center"
-                            android:paddingBottom="4dp"/>
+                            android:paddingBottom="4dp" />
 
-                        <!-- Engine Used -->
+                        <!-- Voter ID / HTTP code -->
                         <TextView
                             android:id="@+id/engineUsedText"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Engine: —"
+                            android:text=""
                             android:textSize="12sp"
                             android:textColor="?attr/colorOnSurfaceVariant"
                             android:gravity="center"
-                            android:paddingBottom="12dp"/>
+                            android:paddingBottom="12dp" />
 
-                        <!-- Similarity Score -->
+                        <!-- Large symbol ✓ / ✗ -->
                         <TextView
                             android:id="@+id/similarityText"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="--"
+                            android:text="—"
                             android:textSize="48sp"
                             android:textStyle="bold"
                             android:gravity="center"
-                            android:paddingBottom="16dp"/>
+                            android:paddingBottom="16dp" />
 
-                        <!-- Details -->
+                        <!-- Details / error description -->
                         <TextView
                             android:id="@+id/detailsText"
                             android:layout_width="match_parent"
@@ -502,13 +428,13 @@
                             android:textSize="14sp"
                             android:textColor="?attr/colorOnSurfaceVariant"
                             android:gravity="center"
-                            android:visibility="gone"/>
+                            android:visibility="gone" />
 
                     </LinearLayout>
 
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- Action Buttons -->
+                <!-- Failure action buttons -->
                 <LinearLayout
                     android:id="@+id/resultButtonsContainer"
                     android:layout_width="match_parent"
@@ -516,7 +442,6 @@
                     android:orientation="vertical"
                     android:visibility="gone">
 
-                    <!-- Retry Button (for failures) -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/retryButton"
                         android:layout_width="match_parent"
@@ -525,9 +450,8 @@
                         android:textSize="16sp"
                         app:cornerRadius="28dp"
                         app:icon="@android:drawable/ic_menu_rotate"
-                        android:layout_marginBottom="12dp"/>
+                        android:layout_marginBottom="12dp" />
 
-                    <!-- Cancel Button (for failures) -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/cancelButton"
                         android:layout_width="match_parent"
@@ -535,20 +459,20 @@
                         android:text="Cancel"
                         android:textSize="16sp"
                         style="@style/Widget.Material3.Button.OutlinedButton"
-                        app:cornerRadius="28dp"/>
+                        app:cornerRadius="28dp" />
 
                 </LinearLayout>
 
-                <!-- Success Button (for success) -->
+                <!-- Success button -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/continueButton"
                     android:layout_width="match_parent"
                     android:layout_height="56dp"
-                    android:text="Continue"
+                    android:text="Proceed to Vote"
                     android:textSize="16sp"
                     app:cornerRadius="28dp"
                     app:icon="@android:drawable/ic_menu_send"
-                    android:visibility="gone"/>
+                    android:visibility="gone" />
 
             </LinearLayout>
 

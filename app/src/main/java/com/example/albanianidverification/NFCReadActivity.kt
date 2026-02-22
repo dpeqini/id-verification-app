@@ -2,7 +2,6 @@ package com.example.albanianidverification
 
 import android.app.PendingIntent
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.nfc.NfcAdapter
 import android.nfc.Tag
@@ -58,33 +57,20 @@ class NFCReadActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
-        // Back button
-        binding.backButton.setOnClickListener {
-            finish()
-        }
+        binding.backButton.setOnClickListener { finish() }
 
-        // Rescan button - reset and allow rescanning
         binding.rescanButton.setOnClickListener {
             resetNFCReading()
             Toast.makeText(this, "Ready to rescan. Hold card near phone.", Toast.LENGTH_SHORT).show()
         }
-
-        // Verify button - launch face verification (handled later)
     }
 
     private fun resetNFCReading() {
-        // Hide chip data card
         binding.chipDataLayout.visibility = android.view.View.GONE
-
-        // Show NFC status card
-        binding.nfcStatusCard.visibility = android.view.View.VISIBLE
-
-        // Reset status texts
-        binding.instructionText.text = "Hold your phone near the ID card's chip"
-        binding.statusText.text = "Waiting for NFC tag..."
-        binding.progressBar.visibility = android.view.View.GONE
-
-        // Reset reading flag
+        binding.nfcStatusCard.visibility  = android.view.View.VISIBLE
+        binding.instructionText.text      = "Hold your phone near the ID card's chip"
+        binding.statusText.text           = "Waiting for NFC tag..."
+        binding.progressBar.visibility    = android.view.View.GONE
         isReading = false
     }
 
@@ -112,8 +98,7 @@ class NFCReadActivity : AppCompatActivity() {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_MUTABLE
+            this, 0, intent, PendingIntent.FLAG_MUTABLE
         )
         nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
     }
@@ -124,53 +109,36 @@ class NFCReadActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-
         if (NfcAdapter.ACTION_TAG_DISCOVERED == intent.action ||
-            NfcAdapter.ACTION_TECH_DISCOVERED == intent.action) {
-
+            NfcAdapter.ACTION_TECH_DISCOVERED == intent.action
+        ) {
             val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
-            if (tag != null && !isReading) {
-                readNFCTag(tag)
-            }
+            if (tag != null && !isReading) readNFCTag(tag)
         }
     }
 
     private fun readNFCTag(tag: Tag) {
         isReading = true
         binding.progressBar.visibility = android.view.View.VISIBLE
-        binding.statusText.text = "Reading NFC chip..."
+        binding.statusText.text        = "Reading NFC chip..."
 
         lifecycleScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
                     val isoDep = IsoDep.get(tag)
                     val reader = PassportReader(isoDep)
-
                     mrzData?.let { mrz ->
-                        reader.readPassport(
-                            mrz.documentNumber,
-                            mrz.dateOfBirth,
-                            mrz.expiryDate
-                        )
+                        reader.readPassport(mrz.documentNumber, mrz.dateOfBirth, mrz.expiryDate)
                     } ?: throw IllegalStateException("MRZ data is null")
                 }
 
-                if (result.isAuthenticated) {
+                if (result != null && result.isAuthenticated) {
                     binding.statusText.text = "Successfully read chip data!"
                     displayChipData(result)
                 } else {
                     binding.statusText.text = "Failed to read chip"
-                    val errorMsg ="Unknown error"
-                    Toast.makeText(
-                        this@NFCReadActivity,
-                        "Could not read NFC chip: $errorMsg",
-                        Toast.LENGTH_LONG
-                    ).show()
-
-                    // Still display what we got (for debugging)
-                    if (result.personalData != null) {
-                        displayChipData(result)
-                    }
+                    Toast.makeText(this@NFCReadActivity, "Could not read NFC chip", Toast.LENGTH_LONG).show()
+                    if (result?.personalData != null) displayChipData(result)
                 }
 
             } catch (e: Exception) {
@@ -189,20 +157,11 @@ class NFCReadActivity : AppCompatActivity() {
     }
 
     private fun displayChipData(chipData: PassportReader.ChipData) {
-        // Hide NFC status card
         binding.nfcStatusCard.visibility = android.view.View.GONE
-
-        // Show chip data card
         binding.chipDataLayout.visibility = android.view.View.VISIBLE
 
         binding.chipInfoText.text = buildString {
             append("=== Chip Data ===\n\n")
-
-            // Show error message if any
-//            chipData.errorMessage?.let {
-//                append("⚠️ Error: $it\n\n")
-//            }
-
             chipData.personalData?.let {
                 append("Full Name: ${it.name}\n")
                 append("Nationality: ${it.nationality}\n")
@@ -210,44 +169,56 @@ class NFCReadActivity : AppCompatActivity() {
                 append("Gender: ${it.gender}\n")
                 append("Document Number: ${it.documentNumber}\n")
                 append("Expiry Date: ${it.expiryDate}\n")
-            } ?: run {
-                append("No personal data extracted\n")
-            }
+            } ?: append("No personal data extracted\n")
 
             append("\nData Groups Read: ${chipData.dataGroupsRead.joinToString(", ")}\n")
             append("Authentication: ${if (chipData.isAuthenticated) "✓ Success" else "✗ Failed"}\n")
-
-            if (chipData.faceImage != null) {
-                append("Face Image: ✓ ${chipData.faceImage.size} bytes\n")
-            } else {
-                append("Face Image: ✗ Not extracted\n")
-            }
+            append(if (chipData.faceImage != null) "Face Image: ✓ ${chipData.faceImage.size} bytes\n"
+            else "Face Image: ✗ Not extracted\n")
         }
 
         chipData.faceImage?.let { imageBytes ->
             try {
-                val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-                if (bitmap != null) {
+                BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)?.let { bitmap ->
                     binding.faceImageView.setImageBitmap(bitmap)
                     binding.faceImageView.visibility = android.view.View.VISIBLE
-                } else {
-                    Toast.makeText(this, "Could not decode face image (bitmap is null)", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(this, "Could not decode face image: ${e.message}", Toast.LENGTH_SHORT).show()
-                android.util.Log.e("NFCReadActivity", "Error decoding image", e)
+                android.util.Log.e("NFCReadActivity", "Error decoding face image", e)
             }
         }
 
-        // Only show verify button if we have both personal data and face image
+        // Only offer verification when we have both identity data and a face photo
         if (chipData.personalData != null && chipData.faceImage != null) {
             binding.verifyButton.visibility = android.view.View.VISIBLE
             binding.verifyButton.setOnClickListener {
-                // Navigate to face verification activity
-                val intent = Intent(this, FaceVerificationActivity::class.java)
-                intent.putExtra(FaceVerificationActivity.EXTRA_CHIP_FACE_IMAGE, chipData.faceImage)
-                startActivity(intent)
+                launchFaceVerification(chipData)
             }
         }
+    }
+
+    /**
+     * Launches [FaceVerificationActivity] with all chip data the backend needs.
+     *
+     * The activity will:
+     *   1. Run ML Kit liveness
+     *   2. Capture a live selfie
+     *   3. POST everything to /api/v1/auth/id-card
+     *   4. Navigate to voting on success, or show an error on failure
+     */
+    private fun launchFaceVerification(chipData: PassportReader.ChipData) {
+        val pd = chipData.personalData ?: return
+
+        val intent = Intent(this, FaceVerificationActivity::class.java).apply {
+            // Raw chip face bytes — will be base64-encoded inside the activity
+            putExtra(FaceVerificationActivity.EXTRA_CHIP_FACE_BYTES, chipData.faceImage)
+
+            // Identity fields from DG1 — sent verbatim to the backend
+            putExtra(FaceVerificationActivity.EXTRA_NATIONAL_ID,   pd.documentNumber)
+            putExtra(FaceVerificationActivity.EXTRA_NAME,          pd.name)
+            putExtra(FaceVerificationActivity.EXTRA_DATE_OF_BIRTH, pd.dateOfBirth)
+            putExtra(FaceVerificationActivity.EXTRA_EXPIRY_DATE,   pd.expiryDate)
+        }
+        startActivity(intent)
     }
 }
