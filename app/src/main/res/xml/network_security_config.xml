@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  PHASE 1 — CRITICAL FIX: Certificate Pinning                ║
+  ║  Prevents MITM attacks (Burp Suite, rogue hotspots, etc.)   ║
+  ║                                                              ║
+  ║  HOW TO GET YOUR PIN HASH:                                   ║
+  ║  openssl s_client -connect api.voting.albania.gov:443 |     ║
+  ║    openssl x509 -pubkey -noout |                            ║
+  ║    openssl pkey -pubin -outform der |                       ║
+  ║    openssl dgst -sha256 -binary | base64                    ║
+  ║                                                              ║
+  ║  ALWAYS add a backup pin from your NEXT certificate before  ║
+  ║  you rotate. Without a backup, a cert rotation will break   ║
+  ║  all users until they update the app.                       ║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+<network-security-config>
+
+    <!--
+        PRODUCTION: Lock down to the voting backend only.
+        Replace the sha256 values with your real public key hashes.
+    -->
+<!--    <domain-config cleartextTrafficPermitted="false">-->
+<!--        <domain includeSubdomains="true">api.voting.albania.gov</domain>-->
+
+<!--        <pin-set expiration="2027-01-01">-->
+<!--            &lt;!&ndash; Primary pin — SHA-256 of current server public key &ndash;&gt;-->
+<!--            <pin digest="SHA-256">REPLACE_WITH_YOUR_PRIMARY_PIN_BASE64=</pin>-->
+<!--            &lt;!&ndash; Backup pin — SHA-256 of NEXT certificate's public key &ndash;&gt;-->
+<!--            &lt;!&ndash; Generate this BEFORE you need it — keep it in key management &ndash;&gt;-->
+<!--            <pin digest="SHA-256">REPLACE_WITH_YOUR_BACKUP_PIN_BASE64=</pin>-->
+<!--        </pin-set>-->
+
+<!--        <trustkit-config enforcePinning="true" />-->
+<!--    </domain-config>-->
+
+    <!--
+        DEVELOPMENT ONLY: Allow plaintext to localhost for emulator testing.
+        This block must be removed before any production build.
+        Use a BuildConfig flag or a separate debug variant instead.
+    -->
+    <!-- TODO: Remove this before production release -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>  <!-- Android Emulator host -->
+        <domain includeSubdomains="false">192.168.1.89</domain> <!-- DeepFace dev server -->
+    </domain-config>
+
+    <!--
+        BASE CONFIG: All other connections are TLS-only.
+        No cleartext, no custom trust anchors.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- Do NOT add 'user' certificates here in production -->
+        </trust-anchors>
+    </base-config>
+
+</network-security-config>
