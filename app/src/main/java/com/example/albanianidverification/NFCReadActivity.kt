@@ -165,6 +165,7 @@ class NFCReadActivity : AppCompatActivity() {
             chipData.personalData?.let {
                 append("Full Name: ${it.name}\n")
                 append("Nationality: ${it.nationality}\n")
+                append("Place of Birth: ${it.placeOfBirth}\n")
                 append("Date of Birth: ${it.dateOfBirth}\n")
                 append("Gender: ${it.gender}\n")
                 append("Document Number: ${it.documentNumber}\n")
@@ -218,6 +219,7 @@ class NFCReadActivity : AppCompatActivity() {
             putExtra(FaceVerificationActivity.EXTRA_NAME,          pd.name)
             putExtra(FaceVerificationActivity.EXTRA_DATE_OF_BIRTH, pd.dateOfBirth)
             putExtra(FaceVerificationActivity.EXTRA_EXPIRY_DATE,   pd.expiryDate)
+            putExtra(FaceVerificationActivity.EXTRA_PLACE_OF_BIRTH,   pd.placeOfBirth)
         }
         startActivity(intent)
     }

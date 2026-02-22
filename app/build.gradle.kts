@@ -22,7 +22,7 @@ android {
         debug {
             // FIX 1: Groovy syntax  →  Kotlin DSL (parentheses + explicit types)
             // Old (broken): buildConfigField "String", "API_URL", '"http://..."'
-            buildConfigField("String", "API_URL", "\"http://10.0.2.2:8081/\"")
+            buildConfigField("String", "API_URL", "\"http://192.168.100.58:8081/\"")
         }
         release {
             isMinifyEnabled   = true

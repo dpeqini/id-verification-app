@@ -22,6 +22,7 @@ import com.example.albanianidverification.api.IdCardAuthRequest
 import com.example.albanianidverification.databinding.ActivityFaceVerificationBinding
 import com.example.albanianidverification.security.ApiClient
 import com.example.albanianidverification.security.TokenManager
+import com.example.albanianidverification.utils.DateUtils
 import com.example.albanianidverification.utils.LivenessDetector
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
@@ -55,6 +56,7 @@ class FaceVerificationActivity : AppCompatActivity() {
     private var nationalId:     String     = ""
     private var holderName:     String     = ""
     private var dateOfBirth:    String     = ""
+    private var placeOfBirth:    String     = ""
     private var expiryDate:     String     = ""
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ class FaceVerificationActivity : AppCompatActivity() {
         const val EXTRA_NAME              = "holder_name"
         const val EXTRA_DATE_OF_BIRTH     = "date_of_birth"
         const val EXTRA_EXPIRY_DATE       = "expiry_date"
+        const val EXTRA_PLACE_OF_BIRTH      = "placeOfBirth"
     }
 
     // ── Permission launcher ───────────────────────────────────────────────────
@@ -102,6 +105,7 @@ class FaceVerificationActivity : AppCompatActivity() {
         holderName    = intent.getStringExtra(EXTRA_NAME)          ?: ""
         dateOfBirth   = intent.getStringExtra(EXTRA_DATE_OF_BIRTH) ?: ""
         expiryDate    = intent.getStringExtra(EXTRA_EXPIRY_DATE)   ?: ""
+        placeOfBirth    = intent.getStringExtra(EXTRA_PLACE_OF_BIRTH)   ?: ""
 
         if (chipFaceBytes == null) {
             Toast.makeText(this, "No chip face image provided", Toast.LENGTH_SHORT).show()
@@ -298,10 +302,11 @@ class FaceVerificationActivity : AppCompatActivity() {
             val request = IdCardAuthRequest(
                 nationalId       = nationalId,
                 name             = holderName,
-                dateOfBirth      = dateOfBirth,
-                expiryDate       = expiryDate,
+                dateOfBirth      = DateUtils.parseMrzDate(dateOfBirth, true),
+                expiryDate       = DateUtils.parseMrzDate(expiryDate, false),
                 chipFacePhoto    = chipBase64,
                 liveSelfie       = selfieBase64,
+                municipality     = placeOfBirth,
                 livenessConfirmed = true        // liveness passed in Step 1
             )
 

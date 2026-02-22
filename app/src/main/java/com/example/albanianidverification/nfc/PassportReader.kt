@@ -5,8 +5,10 @@ import android.util.Log
 import net.sf.scuba.smartcards.CardService
 import org.jmrtd.BACKey
 import org.jmrtd.PassportService
+import org.jmrtd.lds.icao.DG11File
 import org.jmrtd.lds.icao.DG1File
 import org.jmrtd.lds.icao.DG2File
+import org.jmrtd.lds.icao.DG3File
 import org.jmrtd.lds.iso19794.FaceImageInfo
 import org.jmrtd.lds.iso19794.FaceInfo
 import java.io.ByteArrayInputStream
@@ -33,7 +35,8 @@ class PassportReader(private val isoDep: IsoDep) {
         val dateOfBirth: String,
         val gender: String,
         val documentNumber: String,
-        val expiryDate: String
+        val expiryDate: String,
+        val placeOfBirth: String
     )
     
     data class ChipData(
@@ -120,12 +123,22 @@ class PassportReader(private val isoDep: IsoDep) {
                     dateOfBirth = mrzInfo.dateOfBirth,
                     gender = mrzInfo.gender.toString(),
                     documentNumber = mrzInfo.documentNumber,
-                    expiryDate = mrzInfo.dateOfExpiry
+                    expiryDate = mrzInfo.dateOfExpiry,
+                    placeOfBirth = ""
                 )
                 dataGroupsRead.add("DG1")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to read DG1: ${e.message}")
             }
+
+            // 2. Read DG11 (Place of Birth)
+            try {
+                Log.d(TAG, "Reading DG11...")
+                val dg11File = DG11File(passportService.getInputStream(PassportService.EF_DG11))
+                val place = dg11File.placeOfBirth?.elementAtOrNull(0)?.split(",")?.elementAtOrNull(0)
+                personalData = personalData?.copy(placeOfBirth = place?.toString() ?: "")
+                dataGroupsRead.add("DG11")
+            } catch (e: Exception) { Log.w(TAG, "DG11 (Place of Birth) not accessible: ${e.message}") }
 
             // Read DG2
             try {

@@ -1,7 +1,10 @@
 package com.example.albanianidverification.security
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.example.albanianidverification.BuildConfig
 import com.example.albanianidverification.api.VotingApiService
+import com.example.albanianidverification.utils.LocalDateAdapter
 import okhttp3.CertificatePinner
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -9,7 +12,8 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
-
+import com.google.gson.GsonBuilder
+import java.time.LocalDate
 /**
  * ══════════════════════════════════════════════════════════════
  *  ApiClient — Certificate Pinning + Nonce + Device binding
@@ -24,7 +28,10 @@ object ApiClient {
     private const val BACKUP_PIN          = "REPLACE_WITH_YOUR_BACKUP_SHA256_PIN="
 
     private val isDebug: Boolean get() = BuildConfig.DEBUG
-
+    @RequiresApi(Build.VERSION_CODES.O)
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(LocalDate::class.java, LocalDateAdapter())
+        .create()
     // BASE_URL comes directly from build.gradle.kts buildConfigField —
     // "http://10.0.2.2:8081/" in debug, "https://api.voting.albania.gov/" in release.
     private val BASE_URL get() = BuildConfig.API_URL
@@ -105,7 +112,7 @@ object ApiClient {
                     // Full header logging so you can see exactly what leaves the device
                     addInterceptor(
                         HttpLoggingInterceptor().apply {
-                            level = HttpLoggingInterceptor.Level.HEADERS
+                            level = HttpLoggingInterceptor.Level.BASIC
                         }
                     )
                 }
@@ -121,7 +128,7 @@ object ApiClient {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(httpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
 

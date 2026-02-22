@@ -1,6 +1,7 @@
 package com.example.albanianidverification.api
 
 import com.google.gson.annotations.SerializedName
+import java.time.LocalDate
 
 /**
  * Request body for POST /api/v1/auth/id-card
@@ -18,11 +19,11 @@ data class IdCardAuthRequest(
 
     /** Date of birth in YYMMDD format */
     @SerializedName("dateOfBirth")
-    val dateOfBirth: String,
+    val dateOfBirth: LocalDate,
 
     /** Card expiry date in YYMMDD format */
     @SerializedName("expiryDate")
-    val expiryDate: String,
+    val expiryDate: LocalDate,
 
     /** Optional — county from chip (DG11 if present) */
     @SerializedName("county")
