@@ -35,7 +35,7 @@ object DeviceManager {
 
     fun initialize(context: Context) {
         if (prefs != null) return          // idempotent
-
+        val appContext = context.applicationContext
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .setRequestStrongBoxBacked(false)

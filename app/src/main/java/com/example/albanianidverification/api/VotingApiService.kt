@@ -1,8 +1,16 @@
 package com.example.albanianidverification.api
 
+import com.example.albanianidverification.api.models.CandidateResponse
+import com.example.albanianidverification.api.models.ElectionResponse
+import com.example.albanianidverification.api.models.PartyResponse
+import com.example.albanianidverification.api.models.VoteRequest
+import com.example.albanianidverification.api.models.VoteResponse
+import com.example.albanianidverification.api.models.VoteStatusResponse
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 /**
  * Retrofit service interface for the Albanian e-Voting backend.
@@ -34,4 +42,34 @@ interface VotingApiService {
     suspend fun authenticateWithIdCard(
         @Body request: IdCardAuthRequest
     ): Response<AuthResponse>
+
+    // ── Elections ─────────────────────────────────────────────────────────────
+    /** GET /api/v1/elections/active — no auth required */
+    @GET("api/v1/elections/active")
+    suspend fun getActiveElections(): Response<List<ElectionResponse>>
+
+    /** GET /api/v1/elections/{electionId} */
+    @GET("api/v1/elections/{electionId}")
+    suspend fun getElection(@Path("electionId") id: String): Response<ElectionResponse>
+
+    /** GET /api/v1/elections/{electionId}/parties — returns parties with candidates embedded */
+    @GET("api/v1/elections/{electionId}/parties")
+    suspend fun getParties(@Path("electionId") id: String): Response<List<PartyResponse>>
+
+    /**
+     * GET /api/v1/vote/candidates/{electionId}
+     * Candidates filtered to the JWT voter's county / municipality.
+     * Used to know which candidates the voter is eligible to vote for.
+     */
+    @GET("api/v1/vote/candidates/{electionId}")
+    suspend fun getCandidatesForVoter(@Path("electionId") id: String): Response<List<CandidateResponse>>
+
+    // ── Voting ────────────────────────────────────────────────────────────────
+    /** GET /api/v1/vote/status/{electionId} */
+    @GET("api/v1/vote/status/{electionId}")
+    suspend fun getVoteStatus(@Path("electionId") id: String): Response<VoteStatusResponse>
+
+    /** POST /api/v1/vote */
+    @POST("api/v1/vote")
+    suspend fun castVote(@Body request: VoteRequest): Response<VoteResponse>
 }

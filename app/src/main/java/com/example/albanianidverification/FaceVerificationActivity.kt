@@ -21,6 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.albanianidverification.api.IdCardAuthRequest
 import com.example.albanianidverification.databinding.ActivityFaceVerificationBinding
 import com.example.albanianidverification.security.ApiClient
+import com.example.albanianidverification.security.KeyStoreManager
 import com.example.albanianidverification.security.TokenManager
 import com.example.albanianidverification.utils.DateUtils
 import com.example.albanianidverification.utils.LivenessDetector
@@ -63,7 +64,8 @@ class FaceVerificationActivity : AppCompatActivity() {
     private var currentStep       = 1
     private var isFaceDetected    = false
     private var capturedBitmap:   Bitmap?  = null
-
+    private var authVoterId:      String   = ""
+    private var authFullName:     String   = ""
     // ── Liveness ──────────────────────────────────────────────────────────────
     private lateinit var livenessDetector: LivenessDetector
 
@@ -166,8 +168,8 @@ class FaceVerificationActivity : AppCompatActivity() {
         binding.cancelButton.setOnClickListener  { finish() }
         binding.continueButton.setOnClickListener {
             // TODO: Navigate to the voting screen
-            Toast.makeText(this, "Proceeding to vote…", Toast.LENGTH_SHORT).show()
-            finish()
+            navigateToVoting()
+
         }
     }
 
@@ -298,7 +300,7 @@ class FaceVerificationActivity : AppCompatActivity() {
         try {
             val chipBase64   = Base64.encodeToString(chipFaceBytes, Base64.NO_WRAP)
             val selfieBase64 = bitmapToBase64(selfieBitmap)
-
+            val publicKeyBase64 = KeyStoreManager.getOrGeneratePublicKeyBase64()
             val request = IdCardAuthRequest(
                 nationalId       = nationalId,
                 name             = holderName,
@@ -307,6 +309,7 @@ class FaceVerificationActivity : AppCompatActivity() {
                 chipFacePhoto    = chipBase64,
                 liveSelfie       = selfieBase64,
                 municipality     = placeOfBirth,
+                devicePublicKey = publicKeyBase64,
                 livenessConfirmed = true        // liveness passed in Step 1
             )
 
@@ -324,6 +327,8 @@ class FaceVerificationActivity : AppCompatActivity() {
                         expiresInSeconds = body.expiresIn ?: 1800L
                     )
                     Log.i(TAG, "Authentication successful — voterId=${body.voterId}")
+                    authVoterId  = body.voterId  ?: ""
+                    authFullName = holderName ?: ""
                     runOnUiThread { showAuthSuccess(body.voterId ?: "—") }
                 } else {
                     // HTTP 200 but body says failure (shouldn't normally happen)
@@ -334,6 +339,7 @@ class FaceVerificationActivity : AppCompatActivity() {
                 Log.w(TAG, "Auth failed — HTTP ${response.code()}: $errorBody")
                 runOnUiThread { showAuthFailure(response.code(), errorBody) }
             }
+
 
         } catch (e: Exception) {
             Log.e(TAG, "Network error during authentication", e)
@@ -522,6 +528,15 @@ class FaceVerificationActivity : AppCompatActivity() {
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
         return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+    }
+    private fun navigateToVoting() {
+        val intent = Intent(this, VotingActivity::class.java).apply {
+            putExtra(VotingActivity.EXTRA_VOTER_ID,        authVoterId)
+            putExtra(VotingActivity.EXTRA_VOTER_FULL_NAME, authFullName)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+        finish()
     }
 
     private fun resetToStep1() {

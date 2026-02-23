@@ -33,6 +33,8 @@ data class IdCardAuthRequest(
     @SerializedName("municipality")
     val municipality: String? = null,
 
+    @SerializedName("devicePublicKey")
+    val devicePublicKey: String,
     /**
      * Base64-encoded (NO_WRAP) JPEG of the chip face photo extracted from DG2.
      * The backend forwards this to the Python DeepFace server.
