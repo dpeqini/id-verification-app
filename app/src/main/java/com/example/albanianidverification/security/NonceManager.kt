@@ -9,6 +9,7 @@ import java.security.SecureRandom
 import javax.crypto.KeyGenerator
 import javax.crypto.Mac
 import javax.crypto.SecretKey
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * Manages request nonces and HMAC-SHA256 request signing.
@@ -55,13 +56,49 @@ object NonceManager {
      *
      * The key is loaded from AndroidKeyStore, then the HMAC is computed by the
      * default JCA provider — NOT by specifying AndroidKeyStore as the Mac provider.
+     *
+     * ⚠️ IMPORTANT (NEW CLARIFICATION):
+     * This signature CANNOT be verified by the backend because the key is private to AndroidKeyStore.
+     * It is still useful for purely local integrity checks, but NOT for server-side verification.
+     *
+     * For server-verifiable request signing, use the overload that takes deviceSecretBase64:
+     *   signRequest(nonce, timestamp, path, deviceSecretBase64)
      */
     fun signRequest(nonce: String, timestamp: String, path: String): String {
         val key = loadKey()
         // Use default provider — AndroidKeyStore doesn't support Mac.getInstance("HmacSHA256")
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(key)
-        val payload = "$nonce$timestamp$path"
+
+        // NOTE: Keep your existing payload format and comments intact.
+        // Your backend expects "nonce:timestamp:path" (with colons). If you need server verification,
+        // call the overload below which matches backend message format.
+        val payload = "$nonce:$timestamp:$path"
+        val signature = mac.doFinal(payload.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(signature, Base64.NO_WRAP)
+    }
+
+    /**
+     * NEW: Server-verifiable request signature.
+     *
+     * This uses the shared per-device secret (X-Device-Secret), which the backend stores/knows.
+     * Backend can recompute HMAC using the same secret and validate signature.
+     *
+     * Backend message format: "nonce:timestamp:path"
+     *
+     * @param deviceSecretBase64 Base64 NO_WRAP secret sent as X-Device-Secret
+     */
+    fun signRequest(nonce: String, timestamp: String, path: String, deviceSecretBase64: String): String {
+        val secretBytes = try {
+            Base64.decode(deviceSecretBase64, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            throw IllegalStateException("Invalid device secret Base64", e)
+        }
+
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(secretBytes, "HmacSHA256"))
+
+        val payload = "$nonce:$timestamp:$path"
         val signature = mac.doFinal(payload.toByteArray(Charsets.UTF_8))
         return Base64.encodeToString(signature, Base64.NO_WRAP)
     }

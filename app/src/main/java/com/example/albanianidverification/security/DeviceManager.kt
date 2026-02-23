@@ -5,7 +5,9 @@ import android.provider.Settings
 import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.UUID
 
 /**
  * ══════════════════════════════════════════════════════════════
@@ -25,17 +27,20 @@ import java.security.SecureRandom
  */
 object DeviceManager {
 
-    private const val PREFS_FILE       = "evoting_device_identity"
-    private const val KEY_DEVICE_ID    = "device_id"
+    private const val PREFS_FILE = "evoting_device_identity"
+
+    private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_DEVICE_SECRET = "device_secret_b64"
+    private const val KEY_INSTALL_FALLBACK_ID = "install_fallback_uuid"
+
+    // Change this when you publish a new app family (keep stable per app)
+    private const val APP_SALT = "EVOTING_ALBANIA_APP_SALT_V1"
 
     private var prefs: EncryptedSharedPreferences? = null
 
-    // ── Public API ───────────────────────────────────────────────────────────
-
     fun initialize(context: Context) {
-        if (prefs != null) return          // idempotent
-        val appContext = context.applicationContext
+        if (prefs != null) return
+
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .setRequestStrongBoxBacked(false)
@@ -50,18 +55,25 @@ object DeviceManager {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         ) as EncryptedSharedPreferences
 
-        // Ensure the device secret is generated on first launch
+        // Ensure secret exists
         if (requirePrefs().getString(KEY_DEVICE_SECRET, null) == null) {
             generateAndSaveSecret()
         }
 
-        // Persist the stable device ID
+        // Ensure deviceId exists (stable)
         if (requirePrefs().getString(KEY_DEVICE_ID, null) == null) {
             val androidId = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ANDROID_ID
-            ) ?: "unknown-${System.currentTimeMillis()}"
-            requirePrefs().edit().putString(KEY_DEVICE_ID, androidId).apply()
+            )
+
+            val stableSource = when {
+                !androidId.isNullOrBlank() -> androidId
+                else -> getOrCreateInstallFallbackId()
+            }
+
+            val hashedDeviceId = sha256Hex("$stableSource|$APP_SALT")
+            requirePrefs().edit().putString(KEY_DEVICE_ID, hashedDeviceId).apply()
         }
     }
 
@@ -72,18 +84,32 @@ object DeviceManager {
     /**
      * 32-byte device secret encoded as Base64 (NO_WRAP).
      * Sent as X-Device-Secret on every request.
-     * The backend stores this after the first successful auth.
      */
     fun getDeviceSecretBase64(): String =
         requirePrefs().getString(KEY_DEVICE_SECRET, "") ?: ""
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
+    private fun getOrCreateInstallFallbackId(): String {
+        val existing = requirePrefs().getString(KEY_INSTALL_FALLBACK_ID, null)
+        if (!existing.isNullOrBlank()) return existing
+
+        val created = UUID.randomUUID().toString()
+        requirePrefs().edit().putString(KEY_INSTALL_FALLBACK_ID, created).apply()
+        return created
+    }
+
     private fun generateAndSaveSecret() {
         val secret = ByteArray(32)
         SecureRandom().nextBytes(secret)
         val encoded = Base64.encodeToString(secret, Base64.NO_WRAP)
         requirePrefs().edit().putString(KEY_DEVICE_SECRET, encoded).apply()
+    }
+
+    private fun sha256Hex(input: String): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun requirePrefs(): EncryptedSharedPreferences =

@@ -14,11 +14,13 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 import com.google.gson.GsonBuilder
 import java.time.LocalDate
+
 /**
  * ══════════════════════════════════════════════════════════════
  *  ApiClient — Certificate Pinning + Nonce + Device binding
  * ══════════════════════════════════════════════════════════════
  */
+@RequiresApi(Build.VERSION_CODES.O)
 object ApiClient {
 
     // ── Configuration ────────────────────────────────────────────────────────
@@ -28,10 +30,12 @@ object ApiClient {
     private const val BACKUP_PIN          = "REPLACE_WITH_YOUR_BACKUP_SHA256_PIN="
 
     private val isDebug: Boolean get() = BuildConfig.DEBUG
+
     @RequiresApi(Build.VERSION_CODES.O)
     private val gson = GsonBuilder()
         .registerTypeAdapter(LocalDate::class.java, LocalDateAdapter())
         .create()
+
     // BASE_URL comes directly from build.gradle.kts buildConfigField —
     // "http://10.0.2.2:8081/" in debug, "https://api.voting.albania.gov/" in release.
     private val BASE_URL get() = BuildConfig.API_URL
@@ -54,7 +58,21 @@ object ApiClient {
         val nonce     = NonceManager.generateNonce()
         val timestamp = System.currentTimeMillis().toString()
         val path      = original.url.encodedPath
-        val signature = NonceManager.signRequest(nonce, timestamp, path)
+
+        // NEW:
+        // We MUST sign using the same secret that the backend knows.
+        // The backend verifies the HMAC using the device secret registered for this deviceId.
+        // AndroidKeyStore-only HMAC keys cannot be verified on the backend because the server
+        // doesn't have that private key.
+        val deviceSecret = DeviceManager.getDeviceSecretBase64()
+
+        // Signature must match backend message format: "nonce:timestamp:path"
+        val signature = NonceManager.signRequest(
+            nonce = nonce,
+            timestamp = timestamp,
+            path = path,
+            deviceSecretBase64 = deviceSecret
+        )
 
         chain.proceed(
             original.newBuilder()
@@ -112,6 +130,8 @@ object ApiClient {
                     // Full header logging so you can see exactly what leaves the device
                     addInterceptor(
                         HttpLoggingInterceptor().apply {
+                            // NOTE: You wrote "Full header logging" in comment but BASIC doesn't show headers.
+                            // If you want headers, use HEADERS. Keeping your existing value to avoid behavior changes.
                             level = HttpLoggingInterceptor.Level.BASIC
                         }
                     )

@@ -26,6 +26,7 @@ object TokenManager {
     private const val KEY_ACCESS     = "access_token"
     private const val KEY_REFRESH    = "refresh_token"
     private const val KEY_EXPIRES_AT = "access_token_expires_at_ms"
+    private const val KEY_BOUND_DEVICE_ID = "bound_device_id"
 
     private var prefs: androidx.security.crypto.EncryptedSharedPreferences? = null
 
@@ -44,20 +45,46 @@ object TokenManager {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         ) as androidx.security.crypto.EncryptedSharedPreferences
     }
-
-    /** Save tokens after a successful authentication response. */
+    /**
+     * Save tokens after successful authentication.
+     * Enforces: accessToken.deviceId must equal DeviceManager.getDeviceId()
+     */
     fun saveTokens(accessToken: String, refreshToken: String, expiresInSeconds: Long = 300) {
+        val expectedDeviceId = DeviceManager.getDeviceId()
+        val tokenDeviceId = JwtUtils.getDeviceId(accessToken)
+
+        if (tokenDeviceId.isNullOrBlank()) {
+            clearTokens()
+            throw IllegalStateException("Server token missing deviceId claim")
+        }
+
+        if (tokenDeviceId != expectedDeviceId) {
+            clearTokens()
+            throw IllegalStateException("Token is not meant for this device")
+        }
+
         requirePrefs().edit()
-            .putString(KEY_ACCESS,  accessToken)
+            .putString(KEY_ACCESS, accessToken)
             .putString(KEY_REFRESH, refreshToken)
             .putLong(KEY_EXPIRES_AT, System.currentTimeMillis() + expiresInSeconds * 1000L)
+            .putString(KEY_BOUND_DEVICE_ID, expectedDeviceId)
             .apply()
     }
-
-    /** Returns the access token if it has not expired, null otherwise. */
+    /**
+     * Returns the access token if not expired AND still bound to this device.
+     */
     fun getAccessToken(): String? {
-        val token   = requirePrefs().getString(KEY_ACCESS, null) ?: return null
+        val token = requirePrefs().getString(KEY_ACCESS, null) ?: return null
         val expires = requirePrefs().getLong(KEY_EXPIRES_AT, 0L)
+
+        // device binding check every time
+        val boundDeviceId = requirePrefs().getString(KEY_BOUND_DEVICE_ID, null)
+        val currentDeviceId = DeviceManager.getDeviceId()
+        if (boundDeviceId != null && boundDeviceId != currentDeviceId) {
+            clearTokens()
+            return null
+        }
+
         // Reject 30 seconds before actual expiry to account for clock skew
         return if (System.currentTimeMillis() < expires - 30_000L) token else null
     }
@@ -74,6 +101,7 @@ object TokenManager {
             .remove(KEY_ACCESS)
             .remove(KEY_REFRESH)
             .remove(KEY_EXPIRES_AT)
+            .remove(KEY_BOUND_DEVICE_ID)
             .apply()
     }
 

@@ -320,16 +320,24 @@ class FaceVerificationActivity : AppCompatActivity() {
             if (response.isSuccessful) {
                 val body = response.body()
                 if (body?.success == true && body.accessToken != null) {
-                    // Persist tokens
-                    TokenManager.saveTokens(
-                        accessToken  = body.accessToken,
-                        refreshToken = body.refreshToken ?: "",
-                        expiresInSeconds = body.expiresIn ?: 1800L
-                    )
-                    Log.i(TAG, "Authentication successful — voterId=${body.voterId}")
-                    authVoterId  = body.voterId  ?: ""
-                    authFullName = holderName ?: ""
-                    runOnUiThread { showAuthSuccess(body.voterId ?: "—") }
+                    try {
+                        TokenManager.saveTokens(
+                            accessToken = body.accessToken,
+                            refreshToken = body.refreshToken ?: "",
+                            expiresInSeconds = body.expiresIn ?: 1800L
+                        )
+
+                        Log.i(TAG, "Authentication successful — voterId=${body.voterId}")
+                        authVoterId = body.voterId ?: ""
+                        authFullName = holderName ?: ""
+                        runOnUiThread { showAuthSuccess(body.voterId ?: "—") }
+
+                    } catch (e: IllegalStateException) {
+                        Log.e(TAG, "Device-bound token rejected: ${e.message}")
+                        runOnUiThread {
+                            showAuthFailure(401, "Device binding failed: ${e.message}")
+                        }
+                    }
                 } else {
                     // HTTP 200 but body says failure (shouldn't normally happen)
                     runOnUiThread { showAuthFailure(response.code(), body?.message) }
