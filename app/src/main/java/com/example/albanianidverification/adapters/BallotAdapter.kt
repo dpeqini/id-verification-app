@@ -1,5 +1,8 @@
 package com.example.albanianidverification.adapters
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
@@ -7,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.example.albanianidverification.R
 import com.example.albanianidverification.api.models.PartyResponse
@@ -15,17 +19,25 @@ import com.google.android.material.card.MaterialCardView
 /**
  * BallotAdapter
  *
- * Shows parties as expandable cards. Each party only shows candidates the
- * voter is eligible to vote for (filtered by eligibleCandidateIds from
- * GET /api/v1/vote/candidates/{electionId}). Ineligible candidates are not
- * shown at all — not greyed out, not listed.
+ * Shows parties as expandable cards. Each party only shows the candidates the
+ * voter is eligible to vote for, filtered using the set returned by
+ * GET /api/v1/vote/candidates/{electionId}.
  *
- * Candidate rows show name, list position, and profession only.
- * County/municipality fields are intentionally excluded from the display.
+ * The backend already applies the correct region rule:
+ *   • LOCAL_GOVERNMENT  → candidates in the voter's municipality only
+ *   • PARLIAMENTARY     → candidates in the voter's county only
+ *
+ * The adapter simply hides any candidate whose id is NOT in [eligibleCandidateIds].
+ *
+ * IMPORTANT — null vs empty:
+ *   • eligibleCandidateIds = null   → eligible list never loaded, show ALL (fallback)
+ *   • eligibleCandidateIds = empty  → server returned zero eligible candidates, show NONE
+ *   This distinction prevents the old bug where an empty set let every candidate through.
  */
 class BallotAdapter(
     private val parties: List<PartyResponse>,
-    private val eligibleCandidateIds: Set<String>,
+    /** Null = not yet loaded (show all as fallback). Empty = voter has no eligible candidates. */
+    private val eligibleCandidateIds: Set<String>?,
     private val onSelectionChanged: (
         partyId: String,
         candidateId: String,
@@ -45,6 +57,17 @@ class BallotAdapter(
         holder.bind(parties[position], position)
 
     override fun getItemCount() = parties.size
+
+    /**
+     * Returns true if [candidateId] is eligible for this voter.
+     *   • null set → show everything (data not yet available)
+     *   • empty set → show nothing (voter has no eligible candidates)
+     *   • populated set → show only matching ids
+     */
+    private fun isEligible(candidateId: String?): Boolean {
+        if (candidateId == null) return false
+        return eligibleCandidateIds == null || eligibleCandidateIds.contains(candidateId)
+    }
 
     inner class PartyVH(v: View) : RecyclerView.ViewHolder(v) {
         private val card: MaterialCardView      = v.findViewById(R.id.partyCard)
@@ -66,11 +89,13 @@ class BallotAdapter(
             leaderText.text  = party.leader?.let { "Leader: $it" } ?: ""
             numberBadge.text = (party.listNumber ?: pos + 1).toString()
 
-            // Only count candidates the voter is eligible to vote for
-            val eligible = party.candidates.orEmpty().filter {
-                eligibleCandidateIds.isEmpty() || eligibleCandidateIds.contains(it.id)
+            // Count only the candidates the voter can actually vote for
+            val eligible = party.candidates.orEmpty().filter { isEligible(it.id) }
+            countText.text = when {
+                eligible.isEmpty() -> "No candidates in your region"
+                eligible.size == 1 -> "1 candidate"
+                else               -> "${eligible.size} candidates"
             }
-            countText.text = "${eligible.size} candidates"
 
             applyPartyColor(party.color, isSelected)
 
@@ -103,9 +128,9 @@ class BallotAdapter(
             box.removeAllViews()
             val ctx = itemView.context
 
-            // Filter to voter's eligible candidates only — ineligible ones not shown
+            // Filter to the voter's eligible candidates; sort by list position
             val eligible = party.candidates.orEmpty()
-                .filter { eligibleCandidateIds.isEmpty() || eligibleCandidateIds.contains(it.id) }
+                .filter { isEligible(it.id) }
                 .sortedBy { it.positionInList ?: Int.MAX_VALUE }
 
             if (eligible.isEmpty()) {
@@ -127,7 +152,6 @@ class BallotAdapter(
                 val profTv = row.findViewById<TextView>(R.id.candidateProfession)
                 val ageTv  = row.findViewById<TextView>(R.id.candidateAge)
 
-                // Name only — county and municipality intentionally not shown
                 nameTv.text = candidate.displayName
                 posTv.text  = candidate.positionInList?.let { "#$it on list" } ?: ""
                 profTv.text = candidate.profession ?: ""

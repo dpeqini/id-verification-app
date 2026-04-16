@@ -1,5 +1,8 @@
 package com.example.albanianidverification
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Base64
@@ -33,15 +36,21 @@ import org.json.JSONObject
  *        true  → show AlreadyVotedScreen (election stats only, no ballot)
  *        false → parallel:
  *                  GET /api/v1/elections/{electionId}/parties
- *                  GET /api/v1/vote/candidates/{electionId}   (region-filtered)
+ *                  GET /api/v1/vote/candidates/{electionId}   (region-filtered by backend)
  *                → show BallotScreen
  *   3. POST /api/v1/vote → show ReceiptScreen
  *
+ * Region filtering is enforced by the backend:
+ *   • LOCAL_GOVERNMENT → backend returns candidates in the voter's municipality only
+ *   • PARLIAMENTARY    → backend returns candidates in the voter's county only
+ * The adapter receives a nullable Set<String>:
+ *   • null  = eligible list not loaded yet — show all (safe fallback)
+ *   • empty = voter has no eligible candidates — show none (do not let empty == "all")
+ *
  * Security:
- *   - JWT auto-injected by ApiClient interceptors on every call
+ *   - JWT auto-injected by ApiClient interceptors
  *   - VoteRequest.encryptedVoteData = Base64(JSON payload)
- *   - VoteRequest.digitalSignature  = HMAC-SHA256(encryptedVoteData) via NonceManager
- *   - Back press disabled after vote submitted
+ *   - VoteRequest.digitalSignature  = RSA-SHA256 via KeyStoreManager
  */
 class VotingActivity : AppCompatActivity() {
 
@@ -56,7 +65,6 @@ class VotingActivity : AppCompatActivity() {
     private var election: ElectionResponse? = null
     private var adapter: BallotAdapter? = null
 
-    // Selection state kept here (mirrored from adapter callbacks)
     private var selectedPartyId: String?     = null
     private var selectedCandidateId: String? = null
     private var selectedCandidateName: String? = null
@@ -65,6 +73,11 @@ class VotingActivity : AppCompatActivity() {
     private var voteSubmitted = false
     private var voterId    = ""
     private var voterName  = ""
+
+    // Full receipt values kept for clipboard operations
+    private var receiptVoteHashFull: String?     = null
+    private var receiptTokenFull: String?        = null
+    private var receiptVerificationCode: String? = null
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -86,6 +99,19 @@ class VotingActivity : AppCompatActivity() {
         binding.logoutButton.setOnClickListener  { confirmLogout() }
         binding.castVoteButton.setOnClickListener { confirmVote() }
         binding.retryButton.setOnClickListener    { loadData() }
+
+        // ── Receipt copy buttons ───────────────────────────────────────────
+        // Tapping the hash text or the dedicated copy button copies the full hash.
+        binding.receiptVoteHash.setOnClickListener { copyToClipboard("Vote Hash", receiptVoteHashFull) }
+        binding.receiptToken.setOnClickListener    { copyToClipboard("Receipt Token", receiptTokenFull) }
+
+        // If your layout has dedicated copy buttons, wire them here:
+        // binding.copyVoteHashButton.setOnClickListener { copyToClipboard("Vote Hash", receiptVoteHashFull) }
+        // binding.copyReceiptTokenButton.setOnClickListener { copyToClipboard("Receipt Token", receiptTokenFull) }
+
+        // Hint that the fields are tappable (set in onCreate so it doesn't reset on re-render)
+        binding.receiptVoteHash.hint  = "Tap to copy"
+        binding.receiptToken.hint     = "Tap to copy"
 
         loadData()
     }
@@ -111,7 +137,6 @@ class VotingActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                // Step 1: active elections
                 val electionsResp = ApiClient.votingService.getActiveElections()
                 if (!electionsResp.isSuccessful || electionsResp.body().isNullOrEmpty()) {
                     showError("No active elections found at this time.")
@@ -120,7 +145,6 @@ class VotingActivity : AppCompatActivity() {
                 val el = electionsResp.body()!!.first()
                 election = el
 
-                // Step 2: vote status
                 binding.loadingText.text = "Checking vote status…"
                 val statusResp = ApiClient.votingService.getVoteStatus(el.id)
                 if (statusResp.isSuccessful && statusResp.body()?.hasVoted == true) {
@@ -128,11 +152,10 @@ class VotingActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                // Step 3: parties + eligible candidates (parallel)
                 binding.loadingText.text = "Loading ballot…"
                 coroutineScope {
-                    val partiesD    = async { ApiClient.votingService.getParties(el.id) }
-                    val eligibleD   = async { ApiClient.votingService.getCandidatesForVoter(el.id) }
+                    val partiesD  = async { ApiClient.votingService.getParties(el.id) }
+                    val eligibleD = async { ApiClient.votingService.getCandidatesForVoter(el.id) }
 
                     val partiesResp  = partiesD.await()
                     val eligibleResp = eligibleD.await()
@@ -142,11 +165,11 @@ class VotingActivity : AppCompatActivity() {
                         return@coroutineScope
                     }
 
-                    val parties  = partiesResp.body()!!
-                    val eligible = eligibleResp.body() ?: emptyList()
+                    val parties = partiesResp.body()!!
 
-                    // Build a set of eligible candidate IDs so the adapter can grey out ineligible ones
-                    val eligibleIds = eligible.map { it.id }.toSet()
+                    // Null  → eligible list could not be fetched (network error) → show all as fallback
+                    // Empty → server returned 0 eligible candidates for this voter → show none
+                    val eligibleIds: Set<String>? = eligibleResp.body()?.map { it.id }?.toSet()
 
                     runOnUiThread { renderBallot(el, parties, eligibleIds) }
                 }
@@ -163,20 +186,21 @@ class VotingActivity : AppCompatActivity() {
     private fun renderBallot(
         el: ElectionResponse,
         parties: List<com.example.albanianidverification.api.models.PartyResponse>,
-        eligibleIds: Set<String>
+        eligibleIds: Set<String>?
     ) {
         show(Screen.BALLOT)
 
-        binding.electionNameText.text  = el.name
-        binding.electionTypeText.text  = formatType(el.electionType)
+        binding.electionNameText.text   = el.name
+        binding.electionTypeText.text   = formatType(el.electionType)
         binding.electionStatusText.text = "● ACTIVE"
 
-        val totalCandidates = parties.sumOf { it?.candidateCount!! }
+        val totalCandidates = parties.sumOf { it?.candidateCount ?: 0 }
         binding.ballotSummaryText.text = "${parties.size} parties · $totalCandidates candidates"
 
         binding.selectionSummaryCard.visibility = View.GONE
         binding.castVoteButton.isEnabled = false
 
+        // Pass eligibleIds as-is — the adapter handles null vs empty correctly
         adapter = BallotAdapter(parties, eligibleIds) { pId, cId, cName, pName ->
             selectedPartyId       = pId
             selectedCandidateId   = cId
@@ -205,15 +229,46 @@ class VotingActivity : AppCompatActivity() {
     private fun renderReceipt(r: VoteResponse) {
         voteSubmitted = true
         show(Screen.RECEIPT)
+
+        // Store full values for clipboard
+        receiptVoteHashFull     = r.voteHash
+        receiptTokenFull        = r.receiptToken
+        receiptVerificationCode = r.verificationCode
+
         binding.receiptElectionName.text  = r.electionName  ?: election?.name ?: ""
         binding.receiptCandidateName.text = r.candidateName ?: selectedCandidateName ?: "—"
         binding.receiptPartyName.text     = r.partyName     ?: selectedPartyName     ?: "—"
-        binding.receiptVoteHash.text      = r.voteHash?.let { "${it.take(32)}…" }    ?: "—"
-        binding.receiptToken.text         = r.receiptToken?.let { "${it.take(24)}…" } ?: "—"
-        binding.receiptBlockchain.text    = r.blockchainTransactionId
+        binding.receiptTimestamp.text     = r.timestamp?.take(19)?.replace("T", " ") ?: "—"
+
+        // Show truncated hash + copy hint
+        if (r.voteHash != null) {
+            binding.receiptVoteHash.text = "${r.voteHash.take(32)}…  📋"
+        } else {
+            binding.receiptVoteHash.text = "—"
+        }
+
+        // Show truncated token + copy hint
+        if (r.receiptToken != null) {
+            binding.receiptToken.text = "${r.receiptToken.take(24)}…  📋"
+        } else {
+            binding.receiptToken.text = "—"
+        }
+
+        // Verification code — short code the voter can use to look up their vote publicly
+        if (r.verificationCode != null) {
+            binding.receiptVerificationCode.visibility = View.VISIBLE
+            binding.receiptVerificationCode.text = "Verification code: ${r.verificationCode}  📋"
+            binding.receiptVerificationCode.setOnClickListener {
+                copyToClipboard("Verification Code", receiptVerificationCode)
+            }
+        } else {
+            // If the backend doesn't return a separate verification code, fall back to the hash
+            binding.receiptVerificationCode.visibility = View.GONE
+        }
+
+        binding.receiptBlockchain.text = r.blockchainTransactionId
             ?.let { "Block #${r.blockNumber} · ${it.take(20)}…" }
             ?: "Recording on blockchain…"
-        binding.receiptTimestamp.text = r.timestamp?.take(19)?.replace("T", " ") ?: "—"
     }
 
     private fun showError(msg: String) {
@@ -239,7 +294,7 @@ class VotingActivity : AppCompatActivity() {
     }
 
     private fun submitVote() {
-        val elId = election?.id   ?: return
+        val elId = election?.id        ?: return
         val cId  = selectedCandidateId ?: return
         val pId  = selectedPartyId     ?: return
 
@@ -249,7 +304,7 @@ class VotingActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val req = buildVoteRequest(elId, cId, pId)
+                val req  = buildVoteRequest(elId, cId, pId)
                 val resp = ApiClient.votingService.castVote(req)
 
                 when {
@@ -298,11 +353,9 @@ class VotingActivity : AppCompatActivity() {
     /**
      * Builds VoteRequest with:
      *   encryptedVoteData = Base64(JSON {electionId, candidateId, partyId, voterId, ts})
-     *   digitalSignature  = HMAC-SHA256(encryptedVoteData) via NonceManager
+     *   digitalSignature  = RSA-SHA256(electionId:candidateId:partyId) via KeyStoreManager
      */
-// Replace your existing buildVoteRequest method in VotingActivity.kt
     private fun buildVoteRequest(elId: String, cId: String, pId: String): VoteRequest {
-        // 1. Create the JSON payload for the backend to store
         val payload = JSONObject().apply {
             put("electionId",  elId)
             put("candidateId", cId)
@@ -312,26 +365,37 @@ class VotingActivity : AppCompatActivity() {
         }.toString()
         val encodedPayload = Base64.encodeToString(payload.toByteArray(), Base64.NO_WRAP)
 
-        // 2. Create the EXACT string the backend will try to verify
-        // Using "NONE" if an ID is empty to prevent null-pointer mismatches
         val safeCandidateId = cId.ifEmpty { "NONE" }
-        val safePartyId = pId.ifEmpty { "NONE" }
-        val payloadToSign = "$elId:$safeCandidateId:$safePartyId"
+        val safePartyId     = pId.ifEmpty { "NONE" }
+        val payloadToSign   = "$elId:$safeCandidateId:$safePartyId"
 
-        // 3. Sign the string using the hardware RSA Private Key
         val rsaSignature = KeyStoreManager.signData(payloadToSign)
-
-        // 4. Wrap it up with a fresh nonce for the API transport layer
-        val nonce = NonceManager.generateNonce()
+        val nonce        = NonceManager.generateNonce()
 
         return VoteRequest(
             electionId        = elId,
             candidateId       = cId,
             partyId           = pId,
             encryptedVoteData = encodedPayload,
-            digitalSignature  = rsaSignature, // <-- Now contains the RSA signature
+            digitalSignature  = rsaSignature,
             nonce             = nonce
         )
+    }
+
+    // ── Clipboard ─────────────────────────────────────────────────────────────
+
+    /**
+     * Copies [value] to the system clipboard and shows a Toast confirmation.
+     * The label is shown in password managers / clipboard managers.
+     */
+    private fun copyToClipboard(label: String, value: String?) {
+        if (value.isNullOrBlank()) {
+            Toast.makeText(this, "$label not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(label, value))
+        Toast.makeText(this, "$label copied to clipboard", Toast.LENGTH_SHORT).show()
     }
 
     // ── Logout ────────────────────────────────────────────────────────────────
@@ -342,9 +406,6 @@ class VotingActivity : AppCompatActivity() {
             .setMessage("Are you sure you want to logout?")
             .setPositiveButton("Logout") { _, _ ->
                 TokenManager.clearTokens()
-                // Navigate explicitly to MainActivity and clear the back stack.
-                // Just calling finish() would go back to wherever Android left off,
-                // which may be an empty task or the wrong screen.
                 val intent = Intent(this, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 }
@@ -359,11 +420,11 @@ class VotingActivity : AppCompatActivity() {
     private enum class Screen { LOADING, BALLOT, ALREADY_VOTED, RECEIPT, ERROR }
 
     private fun show(s: Screen) {
-        binding.loadingScreen.visibility     = if (s == Screen.LOADING)       View.VISIBLE else View.GONE
-        binding.ballotScreen.visibility      = if (s == Screen.BALLOT)        View.VISIBLE else View.GONE
+        binding.loadingScreen.visibility      = if (s == Screen.LOADING)       View.VISIBLE else View.GONE
+        binding.ballotScreen.visibility       = if (s == Screen.BALLOT)        View.VISIBLE else View.GONE
         binding.alreadyVotedScreen.visibility = if (s == Screen.ALREADY_VOTED) View.VISIBLE else View.GONE
-        binding.receiptScreen.visibility     = if (s == Screen.RECEIPT)       View.VISIBLE else View.GONE
-        binding.errorScreen.visibility       = if (s == Screen.ERROR)         View.VISIBLE else View.GONE
+        binding.receiptScreen.visibility      = if (s == Screen.RECEIPT)       View.VISIBLE else View.GONE
+        binding.errorScreen.visibility        = if (s == Screen.ERROR)         View.VISIBLE else View.GONE
     }
 
     private fun formatType(t: String) = when (t) {

@@ -1,48 +1,99 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    activity_voting.xml
+    ═══════════════════
+    Five mutually-exclusive screens driven by VotingActivity.show():
+      • loadingScreen      — spinner shown while API calls are in flight
+      • ballotScreen       — parties + candidates + Cast Vote button
+      • alreadyVotedScreen — read-only election stats (voter already voted)
+      • receiptScreen      — post-vote receipt with tap-to-copy hash / token
+      • errorScreen        — error message + Retry button
+
+    Top bar is always visible and carries voterNameText + logoutButton.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:background="?attr/colorSurface"
+    tools:context=".VotingActivity">
 
-    <!-- Top bar -->
-    <LinearLayout
+    <!-- ══════════════════════════════════════════════════════════════════
+         TOP BAR  — always visible
+         ══════════════════════════════════════════════════════════════════ -->
+    <com.google.android.material.card.MaterialCardView
         android:id="@+id/topBar"
         android:layout_width="0dp"
-        android:layout_height="56dp"
-        android:orientation="horizontal"
-        android:background="#CC0000"
-        android:paddingStart="16dp"
-        android:paddingEnd="12dp"
-        android:gravity="center_vertical"
-        android:elevation="4dp"
-        app:layout_constraintTop_toTopOf="parent"
+        android:layout_height="wrap_content"
+        app:cardBackgroundColor="#CC0000"
+        app:cardCornerRadius="0dp"
+        app:cardElevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toTopOf="parent">
 
-        <TextView
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:id="@+id/voterNameText"
-            android:text="Welcome"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="12dp">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/logoutButton"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="Logout"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            app:strokeColor="#FFFFFF" />
-    </LinearLayout>
+            <!-- Albanian eagle icon placeholder -->
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:contentDescription="Albanian eagle"
+                android:src="@drawable/ic_albania_eagle"
+                tools:ignore="MissingConstraints" />
 
-    <!-- ══ LOADING ══ -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Albanian E-Voting"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:alpha="0.85" />
+
+                <TextView
+                    android:id="@+id/voterNameText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    tools:text="Welcome, Danjel Peqini" />
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/logoutButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Logout"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                app:strokeColor="#FFFFFF"
+                app:strokeWidth="1dp"
+                app:cornerRadius="20dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         LOADING SCREEN
+         ══════════════════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/loadingScreen"
         android:layout_width="0dp"
@@ -53,7 +104,8 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar">
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        tools:visibility="gone">
 
         <ProgressBar
             android:layout_width="56dp"
@@ -70,7 +122,9 @@
             android:textSize="16sp" />
     </LinearLayout>
 
-    <!-- ══ BALLOT SCREEN ══ -->
+    <!-- ══════════════════════════════════════════════════════════════════
+         BALLOT SCREEN
+         ══════════════════════════════════════════════════════════════════ -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/ballotScreen"
         android:layout_width="0dp"
@@ -79,9 +133,10 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar">
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        tools:visibility="visible">
 
-        <!-- Election header -->
+        <!-- Election header card -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/electionHeaderCard"
             android:layout_width="0dp"
@@ -108,13 +163,15 @@
                     android:layout_height="wrap_content"
                     android:textColor="#CC0000"
                     android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    tools:text="2025 Parliamentary Elections" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:paddingTop="4dp">
+                    android:layout_marginTop="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
                     <TextView
                         android:id="@+id/electionTypeText"
@@ -122,28 +179,36 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:textColor="?attr/colorOnSurfaceVariant"
-                        android:textSize="13sp" />
+                        android:textSize="13sp"
+                        tools:text="Parliamentary Election" />
 
                     <TextView
                         android:id="@+id/electionStatusText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:background="@drawable/bg_status_chip"
+                        android:paddingStart="8dp"
+                        android:paddingTop="2dp"
+                        android:paddingEnd="8dp"
+                        android:paddingBottom="2dp"
                         android:textColor="#2E7D32"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        tools:text="● ACTIVE" />
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/ballotSummaryText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:paddingTop="4dp"
+                    android:layout_marginTop="4dp"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    android:textSize="12sp" />
+                    android:textSize="12sp"
+                    tools:text="6 parties · 140 candidates" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Selection summary -->
+        <!-- Selection summary card (hidden until a candidate is chosen) -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/selectionSummaryCard"
             android:layout_width="0dp"
@@ -151,9 +216,10 @@
             android:layout_marginStart="12dp"
             android:layout_marginEnd="12dp"
             android:visibility="gone"
-            app:cardBackgroundColor="#E8F5E9"
-            app:cardCornerRadius="8dp"
-            app:strokeColor="#2E7D32"
+            app:cardBackgroundColor="#F1F8E9"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="1dp"
+            app:strokeColor="#A5D6A7"
             app:strokeWidth="1dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -166,22 +232,23 @@
                 android:padding="12dp"
                 android:textColor="#2E7D32"
                 android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                tools:text="✓ Selected: Arta Lika — Partia Socialiste" />
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Ballot list -->
+        <!-- Party / candidate list -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/ballotRecyclerView"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:clipToPadding="false"
-            android:paddingBottom="72dp"
+            android:paddingBottom="80dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/selectionSummaryCard" />
 
-        <!-- Cast Vote button pinned to bottom -->
+        <!-- Cast Vote FAB-style button pinned to bottom -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/castVoteButton"
             android:layout_width="0dp"
@@ -192,12 +259,16 @@
             android:textSize="16sp"
             app:backgroundTint="#CC0000"
             app:cornerRadius="26dp"
+            app:icon="@drawable/ic_how_to_vote"
+            app:iconGravity="textStart"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- ══ ALREADY VOTED SCREEN ══ -->
+    <!-- ══════════════════════════════════════════════════════════════════
+         ALREADY VOTED SCREEN
+         ══════════════════════════════════════════════════════════════════ -->
     <ScrollView
         android:id="@+id/alreadyVotedScreen"
         android:layout_width="0dp"
@@ -216,30 +287,34 @@
             android:orientation="vertical"
             android:padding="24dp">
 
+            <!-- Checkmark icon -->
+            <ImageView
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:layout_marginBottom="16dp"
+                android:contentDescription="Vote recorded"
+                android:src="@drawable/ic_check_circle"
+                app:tint="#2E7D32"
+                tools:ignore="MissingConstraints" />
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:paddingBottom="8dp"
-                android:text="✓"
-                android:textColor="#2E7D32"
-                android:textSize="72sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
                 android:gravity="center"
-                android:paddingBottom="24dp"
-                android:text="Your vote has been recorded"
+                android:text="You have already voted\nin this election."
                 android:textColor="#2E7D32"
-                android:textSize="22sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
+            <!-- Election stats card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="4dp">
+                app:cardCornerRadius="12dp"
+                app:cardElevation="3dp"
+                app:strokeColor="?attr/colorOutlineVariant"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -248,29 +323,22 @@
                     android:padding="20dp">
 
                     <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:paddingBottom="12dp"
-                        android:text="ELECTION DETAILS"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
-
-                    <TextView
                         android:id="@+id/avElectionName"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:paddingBottom="4dp"
                         android:textColor="#CC0000"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        android:paddingBottom="4dp"
+                        tools:text="2025 Parliamentary Elections" />
 
                     <TextView
                         android:id="@+id/avElectionType"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:paddingBottom="4dp"
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        tools:text="Parliamentary Election" />
 
                     <TextView
                         android:id="@+id/avElectionDate"
@@ -278,7 +346,8 @@
                         android:layout_height="wrap_content"
                         android:paddingBottom="12dp"
                         android:textColor="?attr/colorOnSurfaceVariant"
-                        android:textSize="13sp" />
+                        android:textSize="13sp"
+                        tools:text="2025-05-11" />
 
                     <View
                         android:layout_width="match_parent"
@@ -291,26 +360,30 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:paddingBottom="4dp"
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        tools:text="Total votes cast: 1,240,503" />
 
                     <TextView
                         android:id="@+id/avTurnout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:paddingBottom="4dp"
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        tools:text="Turnout: 63.4%" />
 
                     <TextView
                         android:id="@+id/avPartyCount"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        tools:text="6 parties participated" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
                 android:gravity="center"
                 android:text="Thank you for participating in democracy."
                 android:textColor="?attr/colorOnSurfaceVariant"
@@ -318,7 +391,9 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- ══ RECEIPT SCREEN ══ -->
+    <!-- ══════════════════════════════════════════════════════════════════
+         RECEIPT SCREEN
+         ══════════════════════════════════════════════════════════════════ -->
     <ScrollView
         android:id="@+id/receiptScreen"
         android:layout_width="0dp"
@@ -333,44 +408,147 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="20dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✓"
-                android:textColor="#2E7D32"
-                android:textSize="72sp" />
-
-            <TextView
+            <!-- ── Header ── -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center"
-                android:paddingBottom="4dp"
-                android:text="Vote Cast Successfully"
-                android:textColor="#2E7D32"
-                android:textSize="22sp"
-                android:textStyle="bold" />
+                android:orientation="vertical"
+                android:paddingBottom="20dp">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:paddingBottom="24dp"
-                android:text="Recorded on the blockchain"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="13sp" />
+                <ImageView
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:contentDescription="Vote confirmed"
+                    android:src="@drawable/ic_check_circle"
+                    app:tint="#2E7D32"
+                    tools:ignore="MissingConstraints" />
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Vote Cast Successfully"
+                    android:textColor="#2E7D32"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:gravity="center"
+                    android:text="Your vote has been recorded on the blockchain.\nKeep your receipt to verify your vote."
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- ── Confirmation card ── -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/receiptConfirmCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                app:cardBackgroundColor="#E8F5E9"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="4dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="3dp"
                 app:strokeColor="#A5D6A7"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="#F9FBE7">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <!-- Section label -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="12dp"
+                        android:text="YOUR SELECTION"
+                        android:textColor="#558B2F"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.1" />
+
+                    <!-- Election name -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Election"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                    <TextView
+                        android:id="@+id/receiptElectionName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:paddingBottom="10dp"
+                        tools:text="2025 Parliamentary Elections" />
+
+                    <!-- Candidate -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Candidate"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                    <TextView
+                        android:id="@+id/receiptCandidateName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:paddingBottom="10dp"
+                        tools:text="Arta Lika" />
+
+                    <!-- Party -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Party"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                    <TextView
+                        android:id="@+id/receiptPartyName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:paddingBottom="10dp"
+                        tools:text="Partia Socialiste" />
+
+                    <!-- Timestamp -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Timestamp"
+                        android:textSize="11sp"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                    <TextView
+                        android:id="@+id/receiptTimestamp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:paddingBottom="4dp"
+                        tools:text="2025-05-11 09:34:21" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Cryptographic proof card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/receiptCryptoCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="3dp"
+                app:strokeColor="?attr/colorOutlineVariant"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -380,77 +558,198 @@
                     android:padding="20dp">
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="CRYPTOGRAPHIC RECEIPT"
+                        android:textColor="?attr/colorPrimary"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.1" />
+
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:paddingBottom="16dp"
-                        android:text="VOTE RECEIPT"
-                        android:textColor="#2E7D32"
+                        android:layout_marginBottom="16dp"
+                        android:text="Tap any field to copy it to your clipboard."
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="12sp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="?attr/colorOutlineVariant"
+                        android:layout_marginBottom="16dp" />
+
+                    <!-- ── Vote Hash ── -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="4dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Vote Hash"
+                            android:textSize="11sp"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:textStyle="bold" />
+
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_content_copy"
+                            android:contentDescription="Copy vote hash"
+                            app:tint="?attr/colorOnSurfaceVariant"
+                            tools:ignore="MissingConstraints" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/receiptVoteHash"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="16dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:fontFamily="monospace"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="12sp"
+                        tools:text="a3f9c2e1b8d4… 📋" />
+
+                    <!-- ── Receipt Token ── -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="4dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Receipt Token"
+                            android:textSize="11sp"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:textStyle="bold" />
+
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_content_copy"
+                            android:contentDescription="Copy receipt token"
+                            app:tint="?attr/colorOnSurfaceVariant"
+                            tools:ignore="MissingConstraints" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/receiptToken"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="16dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:fontFamily="monospace"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="12sp"
+                        tools:text="RCT-8F2A… 📋" />
+
+                    <!-- ── Verification Code ── -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="4dp">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Verification Code"
+                            android:textSize="11sp"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:textStyle="bold" />
+
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_content_copy"
+                            android:contentDescription="Copy verification code"
+                            app:tint="?attr/colorOnSurfaceVariant"
+                            tools:ignore="MissingConstraints" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/receiptVerificationCode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="16dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:fontFamily="monospace"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="8dp"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:visibility="gone"
+                        tools:text="Verification code: VRF-4829  📋"
+                        tools:visibility="visible" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="?attr/colorOutlineVariant"
+                        android:layout_marginBottom="16dp" />
+
+                    <!-- ── Blockchain tx ── -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Blockchain Record"
                         android:textSize="11sp"
-                        android:textStyle="bold" />
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp" />
 
-                    <!-- Election -->
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Election" android:textSize="11sp" android:textColor="?attr/colorOnSurfaceVariant"/>
-                    <TextView android:id="@+id/receiptElectionName" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:textSize="15sp"
-                        android:textStyle="bold" android:paddingBottom="12dp"/>
-
-                    <!-- Candidate -->
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Candidate" android:textSize="11sp" android:textColor="?attr/colorOnSurfaceVariant"/>
-                    <TextView android:id="@+id/receiptCandidateName" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:textSize="15sp"
-                        android:textStyle="bold" android:paddingBottom="12dp"/>
-
-                    <!-- Party -->
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Party" android:textSize="11sp" android:textColor="?attr/colorOnSurfaceVariant"/>
-                    <TextView android:id="@+id/receiptPartyName" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:textSize="15sp" android:paddingBottom="12dp"/>
-
-                    <View android:layout_width="match_parent" android:layout_height="1dp"
-                        android:background="#A5D6A7" android:layout_marginBottom="12dp"/>
-
-                    <!-- Vote Hash -->
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Vote Hash" android:textSize="11sp" android:textColor="?attr/colorOnSurfaceVariant"/>
-                    <TextView android:id="@+id/receiptVoteHash" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:textSize="12sp"
-                        android:fontFamily="monospace" android:paddingBottom="8dp"/>
-
-                    <!-- Receipt Token -->
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Receipt Token" android:textSize="11sp" android:textColor="?attr/colorOnSurfaceVariant"/>
-                    <TextView android:id="@+id/receiptToken" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:textSize="12sp"
-                        android:fontFamily="monospace" android:paddingBottom="8dp"/>
-
-                    <!-- Blockchain -->
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Blockchain" android:textSize="11sp" android:textColor="?attr/colorOnSurfaceVariant"/>
-                    <TextView android:id="@+id/receiptBlockchain" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:textSize="12sp"
-                        android:fontFamily="monospace" android:paddingBottom="8dp"/>
-
-                    <!-- Timestamp -->
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Timestamp" android:textSize="11sp" android:textColor="?attr/colorOnSurfaceVariant"/>
-                    <TextView android:id="@+id/receiptTimestamp" android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:textSize="13sp"/>
+                    <TextView
+                        android:id="@+id/receiptBlockchain"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurface"
+                        tools:text="Block #1042 · 0x3f9c2e1b8d4a…" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ── Info footer ── -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="32dp"
                 android:gravity="center"
-                android:text="Save your receipt token to verify at voting.albania.gov"
+                android:text="Your vote is anonymous and immutable.\nUse the verification code to confirm your vote on the public ledger."
                 android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
+
         </LinearLayout>
     </ScrollView>
 
-    <!-- ══ ERROR SCREEN ══ -->
+    <!-- ══════════════════════════════════════════════════════════════════
+         ERROR SCREEN
+         ══════════════════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/errorScreen"
         android:layout_width="0dp"
@@ -464,29 +763,33 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingBottom="16dp"
-            android:text="⚠"
-            android:textColor="#CC0000"
-            android:textSize="56sp" />
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:contentDescription="Error"
+            android:src="@drawable/ic_error_outline"
+            app:tint="#CC0000"
+            android:layout_marginBottom="16dp"
+            tools:ignore="MissingConstraints" />
 
         <TextView
             android:id="@+id/errorText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:paddingBottom="24dp"
-            android:textSize="16sp" />
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="16sp"
+            android:layout_marginBottom="24dp"
+            tools:text="No active elections found at this time." />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/retryButton"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:text="Try Again"
             app:backgroundTint="#CC0000"
-            app:cornerRadius="24dp" />
+            app:cornerRadius="24dp"
+            app:icon="@drawable/ic_refresh" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
