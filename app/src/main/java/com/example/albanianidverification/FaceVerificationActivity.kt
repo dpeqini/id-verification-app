@@ -61,11 +61,14 @@ class FaceVerificationActivity : AppCompatActivity() {
     private var expiryDate:     String     = ""
 
     // ── State ─────────────────────────────────────────────────────────────────
-    private var currentStep       = 1
-    private var isFaceDetected    = false
+    // @Volatile: read on the camera-analyzer thread, written on the UI thread.
+    @Volatile private var currentStep     = 1
+    @Volatile private var isFaceDetected  = false
+    @Volatile private var livenessHandled = false   // guard: act on the liveness result once
     private var capturedBitmap:   Bitmap?  = null
     private var authVoterId:      String   = ""
     private var authFullName:     String   = ""
+    private var activeToast:      Toast?   = null    // reused so toasts never stack/flicker
     // ── Liveness ──────────────────────────────────────────────────────────────
     private lateinit var livenessDetector: LivenessDetector
 
@@ -87,7 +90,7 @@ class FaceVerificationActivity : AppCompatActivity() {
     ) { granted ->
         if (granted) startCamera()
         else {
-            Toast.makeText(this, "Camera permission required", Toast.LENGTH_LONG).show()
+            toast("Camera permission required", Toast.LENGTH_LONG)
             finish()
         }
     }
@@ -110,7 +113,7 @@ class FaceVerificationActivity : AppCompatActivity() {
         placeOfBirth    = intent.getStringExtra(EXTRA_PLACE_OF_BIRTH)   ?: ""
 
         if (chipFaceBytes == null) {
-            Toast.makeText(this, "No chip face image provided", Toast.LENGTH_SHORT).show()
+            toast("No chip face image provided")
             finish()
             return
         }
@@ -136,8 +139,15 @@ class FaceVerificationActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        activeToast?.cancel()
         cameraExecutor.shutdown()
         livenessDetector.cleanup()
+    }
+
+    /** Show a toast, cancelling any previous one so they never stack or flicker. */
+    private fun toast(message: String, length: Int = Toast.LENGTH_SHORT) {
+        activeToast?.cancel()
+        activeToast = Toast.makeText(this, message, length).also { it.show() }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -161,7 +171,7 @@ class FaceVerificationActivity : AppCompatActivity() {
 
         binding.captureButton.setOnClickListener {
             if (isFaceDetected) captureAndAuthenticate()
-            else Toast.makeText(this, "Please ensure your face is visible", Toast.LENGTH_SHORT).show()
+            else toast("Please ensure your face is visible")
         }
 
         binding.retryButton.setOnClickListener   { resetToStep1() }
@@ -178,10 +188,14 @@ class FaceVerificationActivity : AppCompatActivity() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun showStep1Liveness() {
+        livenessHandled = false
         currentStep = 1
         binding.step1LivenessScreen.visibility  = View.VISIBLE
         binding.step2CaptureScreen.visibility   = View.GONE
         binding.step3ResultsScreen.visibility   = View.GONE
+        // Restore the neutral card (it may be green/red from a previous attempt)
+        binding.livenessInstructionCard.setCardBackgroundColor(0xE6000000.toInt())
+        binding.livenessInstructionText.text = "Please blink your eyes"
         livenessDetector.reset()
     }
 
@@ -202,18 +216,22 @@ class FaceVerificationActivity : AppCompatActivity() {
 
     private fun onLivenessCheckPassed() {
         runOnUiThread {
+            if (livenessHandled) return@runOnUiThread   // ignore repeat frames
+            livenessHandled = true
             binding.livenessInstructionText.text = "All checks passed!"
             binding.livenessInstructionCard.setCardBackgroundColor(0xE04CAF50.toInt())
-            Toast.makeText(this, "✓ Liveness verified!", Toast.LENGTH_SHORT).show()
+            toast("✓ Liveness verified!")
             binding.livenessInstructionCard.postDelayed({ showStep2Capture() }, 1500)
         }
     }
 
     private fun onLivenessCheckFailed() {
         runOnUiThread {
+            if (livenessHandled) return@runOnUiThread   // ignore repeat frames
+            livenessHandled = true
             binding.livenessInstructionText.text = "Liveness check failed"
             binding.livenessInstructionCard.setCardBackgroundColor(0xE0F44336.toInt())
-            Toast.makeText(this, "Please try again", Toast.LENGTH_SHORT).show()
+            toast("Please try again")
             binding.livenessInstructionCard.postDelayed({ resetToStep1() }, 2000)
         }
     }
@@ -282,11 +300,7 @@ class FaceVerificationActivity : AppCompatActivity() {
                     binding.processingOverlay.visibility   = View.GONE
                     binding.processingIndicator.visibility = View.GONE
                     binding.captureButton.isEnabled = true
-                    Toast.makeText(
-                        this@FaceVerificationActivity,
-                        "Capture failed: ${exception.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    toast("Capture failed: ${exception.message}")
                 }
             }
         })
@@ -355,11 +369,7 @@ class FaceVerificationActivity : AppCompatActivity() {
                 binding.processingOverlay.visibility   = View.GONE
                 binding.processingIndicator.visibility = View.GONE
                 binding.captureButton.isEnabled = true
-                Toast.makeText(
-                    this,
-                    "Connection failed — check your internet connection",
-                    Toast.LENGTH_LONG
-                ).show()
+                toast("Connection failed — check your internet connection", Toast.LENGTH_LONG)
             }
         }
     }
@@ -453,7 +463,7 @@ class FaceVerificationActivity : AppCompatActivity() {
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Camera binding failed (step 1)", e)
-                Toast.makeText(this, "Failed to start camera", Toast.LENGTH_LONG).show()
+                toast("Failed to start camera", Toast.LENGTH_LONG)
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -468,7 +478,7 @@ class FaceVerificationActivity : AppCompatActivity() {
 
         @OptIn(ExperimentalGetImage::class)
         override fun analyze(imageProxy: ImageProxy) {
-            if (currentStep != 1) { imageProxy.close(); return }
+            if (currentStep != 1 || livenessHandled) { imageProxy.close(); return }
             val mediaImage = imageProxy.image
             if (mediaImage != null) {
                 val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
@@ -480,7 +490,11 @@ class FaceVerificationActivity : AppCompatActivity() {
                                 getColor(if (isFaceDetected) android.R.color.holo_green_dark
                                 else android.R.color.holo_red_dark)
                             )
-                            if (faces.isNotEmpty()) livenessDetector.processFace(faces[0])
+                            // Re-check the guard on the UI thread: a late frame must not
+                            // feed the detector after liveness already resolved.
+                            if (faces.isNotEmpty() && !livenessHandled && currentStep == 1) {
+                                livenessDetector.processFace(faces[0])
+                            }
                         }
                     }
                     .addOnCompleteListener { imageProxy.close() }

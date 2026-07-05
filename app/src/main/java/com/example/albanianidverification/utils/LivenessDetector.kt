@@ -53,14 +53,20 @@ class LivenessDetector(
     private var headTurned = false
     private var headTurnStartTime = 0L
     
-    private val startTime = System.currentTimeMillis()
-    
+    private var startTime = System.currentTimeMillis()
+
+    // Latch: once liveness resolves (pass or fail) we must notify exactly once,
+    // otherwise every subsequent camera frame re-fires the callback.
+    private var completed = false
+
     /**
      * Process a detected face to check for liveness indicators
      */
     fun processFace(face: Face) {
+        if (completed) return   // already notified — ignore further frames
+
         val currentTime = System.currentTimeMillis()
-        
+
         // Check for blink
         if (!blinkDetected) {
             checkBlink(face, currentTime)
@@ -79,18 +85,19 @@ class LivenessDetector(
         // Update status
         updateStatus()
         
-        // Check if all checks passed
+        // Check if all checks passed — notify exactly once
         if (blinkDetected && smileDetected && headTurnDetected) {
+            completed = true
             Log.d(TAG, "✓ All liveness checks passed!")
             onLivenessComplete(true)
+            return
         }
-        
-        // Check for timeout
+
+        // Total timeout — notify failure exactly once
         if (currentTime - startTime > 60000L) { // 60 seconds total timeout
-            if (!blinkDetected || !smileDetected || !headTurnDetected) {
-                Log.w(TAG, "✗ Liveness check timed out")
-                onLivenessComplete(false)
-            }
+            completed = true
+            Log.w(TAG, "✗ Liveness check timed out")
+            onLivenessComplete(false)
         }
     }
     
@@ -232,7 +239,10 @@ class LivenessDetector(
         headWasCentered = false
         headTurned = false
         headTurnStartTime = 0L
-        
+
+        completed = false
+        startTime = System.currentTimeMillis()   // restart the 60s window on every retry
+
         Log.d(TAG, "Liveness detector reset")
     }
     
