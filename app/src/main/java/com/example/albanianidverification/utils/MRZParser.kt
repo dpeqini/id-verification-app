@@ -21,9 +21,14 @@ object MRZParser {
             .map { it.trim().replace(" ", "").replace("O", "0") }
             .filter { it.isNotEmpty() }
 
-        // TD3 (passport) — 2 lines of ~44 chars
-        val td3 = findLinesOfWidth(lines, 42..46, want = 2)
-        if (td3.size >= 2) parseTD3(td3)?.let { return it }
+        // TD3 (passport): anchor on line 2 (document number + dates all live there).
+        // Line 1 is optional because OCR most often mangles the long '<<<<' filler
+        // run on the name line — and the authoritative name comes from the chip anyway.
+        val td3Line2 = lines.firstOrNull { it.length in 40..48 && looksLikeTd3Line2(it) }
+        if (td3Line2 != null) {
+            val td3Line1 = lines.firstOrNull { it.length in 40..48 && it.startsWith("P") }
+            parseTD3(td3Line1, td3Line2)?.let { return it }
+        }
 
         // TD1 (ID card) — 3 lines of ~30 chars
         val td1 = findLinesOfWidth(lines, 28..32, want = 2)
@@ -75,9 +80,9 @@ object MRZParser {
             val documentNumber = extractField(line1.substring(5, 14))
             
             // Line 2: Extract dates and nationality
-            val dateOfBirth = line2.substring(0, 6)
+            val dateOfBirth = toDigits(line2.substring(0, 6))
             val gender = line2.substring(7, 8).replace("<", "")
-            val expiryDate = line2.substring(8, 14)
+            val expiryDate = toDigits(line2.substring(8, 14))
             val nationality = line2.substring(15, 18).replace("<", "").ifEmpty { "ALB" }
             
             // Line 3: Extract name (if available)
@@ -113,36 +118,64 @@ object MRZParser {
     }
 
     /**
-     * Parse TD3 format MRZ (passports — 2 lines, 44 chars each).
-     *
-     * Line 1: P<ISSUER<SURNAME<<GIVEN<NAMES<<<...
-     * Line 2: docNo(9) chk(1) nat(3) DOB(6) chk(1) sex(1) exp(6) chk(1)
-     *         personalNo(14) chk(1) compositeChk(1)
-     *
-     * The three fields BAC needs (document number, date of birth, expiry)
-     * are all on line 2.
+     * A line looks like TD3 line 2 when its date fields (offsets 13 and 21) are
+     * numeric after OCR digit-normalisation. This lets us anchor on the data line
+     * even when the name line (line 1) is mangled, and avoids mistaking the name
+     * line (letters at those offsets) for the data line.
      */
-    private fun parseTD3(lines: List<String>): MRZData? {
+    private fun looksLikeTd3Line2(line: String): Boolean {
+        val p = line.padEnd(44, '<')
+        val dob = toDigits(p.substring(13, 19))
+        val exp = toDigits(p.substring(21, 27))
+        return dob.all { it.isDigit() } && exp.all { it.isDigit() }
+    }
+
+    /**
+     * Map the most common OCR letter-for-digit confusions back to digits.
+     * Applied only to fields that MUST be numeric (dates), never to the whole line.
+     */
+    private fun toDigits(s: String): String = s.map { c ->
+        when (c) {
+            'O', 'Q', 'D' -> '0'
+            'I', 'L' -> '1'
+            'Z' -> '2'
+            'S' -> '5'
+            'B' -> '8'
+            'G' -> '6'
+            'T' -> '7'
+            else -> c
+        }
+    }.joinToString("")
+
+    /**
+     * Parse TD3 format MRZ (passports — 2 lines of 44 chars).
+     *
+     * Only line 2 is required: it carries the document number, date of birth and
+     * expiry — the three fields BAC needs. Line 1 (type/country/name) is optional
+     * because its long '<<<<' filler run is what OCR misreads most; the
+     * authoritative name is read from the chip (DG1) anyway.
+     */
+    private fun parseTD3(line1Raw: String?, line2Raw: String): MRZData? {
         try {
-            val line1 = lines.getOrNull(0)?.padEnd(44, '<') ?: return null
-            val line2 = lines.getOrNull(1)?.padEnd(44, '<') ?: return null
+            val line2 = line2Raw.padEnd(44, '<')
 
             // Line 2: document number, dates, nationality, personal number
             val documentNumber = extractField(line2.substring(0, 9))
             val nationality    = line2.substring(10, 13).replace("<", "").ifEmpty { "ALB" }
-            val dateOfBirth    = line2.substring(13, 19)
+            val dateOfBirth    = toDigits(line2.substring(13, 19))
             val gender         = line2.substring(20, 21).replace("<", "")
-            val expiryDate     = line2.substring(21, 27)
+            val expiryDate     = toDigits(line2.substring(21, 27))
             // For Albanian passports the national ID lives in the personal-number field.
             val personalNumber = extractField(line2.substring(28, 42))
 
-            // Line 1: document type, issuing country, name
-            val documentType   = line1.substring(0, 1).replace("<", "").ifEmpty { "P" }
-            val issuingCountry = line1.substring(2, 5).replace("<", "").ifEmpty { "ALB" }
-            val nameField      = line1.substring(5).replace("<", " ").trim()
-            val nameParts      = nameField.split("  ").filter { it.isNotBlank() }
-            val surname        = nameParts.getOrNull(0)
-            val givenNames     = nameParts.drop(1).joinToString(" ").ifBlank { null }
+            // Line 1 (optional): document type, issuing country, name
+            val line1          = line1Raw?.padEnd(44, '<')
+            val documentType   = line1?.substring(0, 1)?.replace("<", "")?.ifEmpty { "P" } ?: "P"
+            val issuingCountry = line1?.substring(2, 5)?.replace("<", "")?.ifEmpty { "ALB" } ?: "ALB"
+            val nameField      = line1?.substring(5)?.replace("<", " ")?.trim()
+            val nameParts      = nameField?.split("  ")?.filter { it.isNotBlank() }
+            val surname        = nameParts?.getOrNull(0)
+            val givenNames     = nameParts?.drop(1)?.joinToString(" ")?.ifBlank { null }
 
             // Validate critical fields
             if (!isValidDocumentNumber(documentNumber)) {
