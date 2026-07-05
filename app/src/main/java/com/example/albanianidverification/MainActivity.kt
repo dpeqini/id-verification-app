@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
             takePhoto()
         }
         
-        binding.instructionText.text = "Position the MRZ (bottom part) of the Albanian ID card within the frame"
+        binding.instructionText.text = "Position the MRZ (bottom lines) of the ID card or passport within the frame"
     }
     
     private fun startCamera() {
@@ -130,6 +130,7 @@ class MainActivity : AppCompatActivity() {
             textRecognizer.process(image)
                 .addOnSuccessListener { visionText ->
                     val text = visionText.text
+                    android.util.Log.d("MRZ_OCR", "----- RAW OCR TEXT -----\n$text\n------------------------")
                     val mrzData = MRZParser.extractMRZ(text)
                     
                     if (mrzData != null) {

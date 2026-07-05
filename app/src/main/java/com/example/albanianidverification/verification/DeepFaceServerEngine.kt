@@ -32,7 +32,7 @@ class DeepFaceServerEngine(
 
     companion object {
         private const val TAG = "DeepFaceEngine"
-        const val DEFAULT_SERVER_URL = "http://192.168.1.89:5005"
+        const val DEFAULT_SERVER_URL = "http://192.168.1.132:5005"
         private const val TIMEOUT_MS = 30_000
     }
 
